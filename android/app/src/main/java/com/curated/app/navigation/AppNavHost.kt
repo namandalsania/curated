@@ -1,0 +1,272 @@
+package com.curated.app.navigation
+
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Explore
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.unit.dp
+import androidx.navigation.NavDestination.Companion.hierarchy
+import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import androidx.navigation.NavType
+import com.curated.app.features.create.CreateRoutes
+import com.curated.app.features.create.createNavGraph
+import com.curated.app.features.explore.ExploreScreen
+import com.curated.app.features.explore.TripDetailScreen
+import com.curated.app.features.home.HomeFeedScreen
+import com.curated.app.features.home.InboxScreen
+import com.curated.app.features.plans.PlanEditorScreen
+import com.curated.app.features.plans.PlansScreen
+import com.curated.app.features.plans.SavedPlacesScreen
+import com.curated.app.features.profile.EditProfileScreen
+import com.curated.app.features.profile.FollowListKind
+import com.curated.app.features.profile.FollowListScreen
+import com.curated.app.features.profile.ProfileScreen
+
+@Composable
+fun AppNavHost(currentUserId: String) {
+    val navController = rememberNavController()
+    val backStackEntry by navController.currentBackStackEntryAsState()
+    val currentDestination = backStackEntry?.destination
+    val topLevelRoutes = setOf(AppRoutes.HOME, AppRoutes.EXPLORE, CreateRoutes.GRAPH, AppRoutes.PROFILE_PATTERN)
+    val showBottomBar = currentDestination?.hierarchy?.any { it.route in topLevelRoutes } == true
+
+    // No window insets here: each screen's own Scaffold/TopAppBar already pads for
+    // the status bar, so applying them again left a blank band above every title.
+    Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        bottomBar = {
+            if (showBottomBar) {
+                val itemColors = NavigationBarItemDefaults.colors(
+                    selectedIconColor = MaterialTheme.colorScheme.primary,
+                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    indicatorColor = Color.Transparent
+                )
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 0.dp
+                ) {
+                    NavigationBarItem(
+                        selected = currentDestination.isInHierarchy(AppRoutes.HOME),
+                        onClick = { navController.navigateToTab(AppRoutes.HOME) },
+                        icon = { NavIconSlot { Icon(Icons.Outlined.Home, contentDescription = "Home") } },
+                        label = { Text("Home") },
+                        colors = itemColors
+                    )
+                    NavigationBarItem(
+                        selected = currentDestination.isInHierarchy(AppRoutes.EXPLORE),
+                        onClick = { navController.navigateToTab(AppRoutes.EXPLORE) },
+                        icon = { NavIconSlot { Icon(Icons.Outlined.Explore, contentDescription = "Explore") } },
+                        label = { Text("Explore") },
+                        colors = itemColors
+                    )
+                    NavigationBarItem(
+                        selected = currentDestination.isInHierarchy(CreateRoutes.GRAPH),
+                        onClick = { navController.navigate(CreateRoutes.GRAPH) { launchSingleTop = true } },
+                        icon = {
+                            // The one FAB-style element in the bottom bar: raised
+                            // above the flat chrome to signal "this is actionable."
+                            NavIconSlot {
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.primary,
+                                shadowElevation = 4.dp,
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Outlined.Add,
+                                        contentDescription = "Create",
+                                        tint = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                }
+                            }
+                            }
+                        },
+                        label = { Text("Create") },
+                        colors = itemColors
+                    )
+                    NavigationBarItem(
+                        selected = currentDestination.isInHierarchy(AppRoutes.PROFILE_PATTERN),
+                        onClick = { navController.navigateToTab(AppRoutes.profile(currentUserId)) },
+                        icon = { NavIconSlot { Icon(Icons.Outlined.AccountCircle, contentDescription = "Profile") } },
+                        label = { Text("Profile") },
+                        colors = itemColors
+                    )
+                }
+            }
+        }
+    ) { padding ->
+        NavHost(
+            navController = navController,
+            startDestination = AppRoutes.HOME,
+            modifier = Modifier.padding(padding)
+        ) {
+            composable(AppRoutes.HOME) {
+                HomeFeedScreen(
+                    onTripClick = { tripId -> navController.navigate(AppRoutes.tripDetail(tripId)) },
+                    onAuthorClick = { authorId -> navController.navigate(AppRoutes.profile(authorId)) },
+                    onOpenPlans = { navController.navigate(AppRoutes.PLANS) { launchSingleTop = true } },
+                    onOpenInbox = { navController.navigate(AppRoutes.INBOX) { launchSingleTop = true } },
+                    onOpenSavedPlaces = { navController.navigate(AppRoutes.SAVED_PLACES) { launchSingleTop = true } }
+                )
+            }
+            composable(AppRoutes.EXPLORE) {
+                ExploreScreen(
+                    onTripClick = { tripId -> navController.navigate(AppRoutes.tripDetail(tripId)) },
+                    onAuthorClick = { authorId -> navController.navigate(AppRoutes.profile(authorId)) }
+                )
+            }
+            createNavGraph(navController)
+            composable(
+                route = AppRoutes.TRIP_DETAIL_PATTERN,
+                arguments = listOf(navArgument("tripId") { type = NavType.StringType })
+            ) { entry ->
+                val tripId = entry.arguments?.getString("tripId").orEmpty()
+                TripDetailScreen(
+                    tripId = tripId,
+                    onBack = { navController.popBackStack() },
+                    onAuthorClick = { authorId -> navController.navigate(AppRoutes.profile(authorId)) },
+                    onOpenSavedPlaces = { navController.navigate(AppRoutes.SAVED_PLACES) { launchSingleTop = true } }
+                )
+            }
+            composable(
+                route = AppRoutes.PROFILE_PATTERN,
+                arguments = listOf(navArgument("userId") { type = NavType.StringType })
+            ) { entry ->
+                val userId = entry.arguments?.getString("userId").orEmpty()
+                val reloadKey by entry.savedStateHandle
+                    .getStateFlow(AppRoutes.PROFILE_RELOAD_KEY, 0L)
+                    .collectAsState()
+                ProfileScreen(
+                    userId = userId,
+                    reloadKey = reloadKey,
+                    onTripClick = { tripId -> navController.navigate(AppRoutes.tripDetail(tripId)) },
+                    onFollowersClick = { navController.navigate(AppRoutes.followList(userId, FollowListKind.FOLLOWERS)) },
+                    onFollowingClick = { navController.navigate(AppRoutes.followList(userId, FollowListKind.FOLLOWING)) },
+                    onEditProfile = { navController.navigate(AppRoutes.EDIT_PROFILE) },
+                    onOpenSavedPlaces = { navController.navigate(AppRoutes.SAVED_PLACES) { launchSingleTop = true } },
+                    onResumeDraft = { tripId -> navController.navigate(CreateRoutes.resumeDraft(tripId)) },
+                    onOpenLiveTrip = { tripId -> navController.navigate(CreateRoutes.live(tripId)) },
+                    onOpenPlans = { navController.navigate(AppRoutes.PLANS) { launchSingleTop = true } },
+                    onSignedOut = {}
+                )
+            }
+            composable(AppRoutes.INBOX) {
+                InboxScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenTrip = { tripId -> navController.navigate(AppRoutes.tripDetail(tripId)) }
+                )
+            }
+            composable(AppRoutes.SAVED_PLACES) {
+                SavedPlacesScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenTrip = { tripId -> navController.navigate(AppRoutes.tripDetail(tripId)) },
+                    onOpenPlans = { navController.navigate(AppRoutes.PLANS) { launchSingleTop = true } }
+                )
+            }
+            composable(AppRoutes.PLANS) {
+                PlansScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenPlan = { planId -> navController.navigate(AppRoutes.planEditor(planId)) }
+                )
+            }
+            composable(
+                route = AppRoutes.PLAN_EDITOR_PATTERN,
+                arguments = listOf(navArgument("planId") { type = NavType.StringType })
+            ) { entry ->
+                PlanEditorScreen(
+                    planId = entry.arguments?.getString("planId").orEmpty(),
+                    onBack = { navController.popBackStack() },
+                    onOpenSavedPlaces = { navController.navigate(AppRoutes.SAVED_PLACES) { launchSingleTop = true } }
+                )
+            }
+            composable(AppRoutes.EDIT_PROFILE) {
+                EditProfileScreen(
+                    onBack = { navController.popBackStack() },
+                    onSaved = {
+                        navController.previousBackStackEntry?.savedStateHandle
+                            ?.set(AppRoutes.PROFILE_RELOAD_KEY, System.currentTimeMillis())
+                        navController.popBackStack()
+                    }
+                )
+            }
+            composable(
+                route = AppRoutes.FOLLOW_LIST_PATTERN,
+                arguments = listOf(
+                    navArgument("userId") { type = NavType.StringType },
+                    navArgument("kind") { type = NavType.StringType }
+                )
+            ) { entry ->
+                val userId = entry.arguments?.getString("userId").orEmpty()
+                val kind = entry.arguments?.getString("kind")
+                    ?.let { runCatching { FollowListKind.valueOf(it) }.getOrNull() }
+                    ?: FollowListKind.FOLLOWERS
+                FollowListScreen(
+                    userId = userId,
+                    kind = kind,
+                    onBack = { navController.popBackStack() },
+                    onUserClick = { id -> navController.navigate(AppRoutes.profile(id)) }
+                )
+            }
+        }
+    }
+}
+
+private fun androidx.navigation.NavController.navigateToTab(route: String) {
+    navigate(route) {
+        popUpTo(graph.findStartDestination().id) { saveState = true }
+        launchSingleTop = true
+        restoreState = true
+    }
+}
+
+private fun androidx.navigation.NavDestination?.isInHierarchy(route: String): Boolean =
+    this?.hierarchy?.any { it.route == route } == true
+
+/**
+ * A fixed-height slot for a bottom-bar icon.
+ *
+ * Create's raised 40dp circle is taller than the other tabs' 24dp glyphs, which
+ * pushed its label down and left the four labels on different baselines. Giving
+ * every tab the same slot height lines them up again.
+ */
+@Composable
+private fun NavIconSlot(content: @Composable () -> Unit) {
+    Box(
+        modifier = Modifier.height(NavIconSlotHeight),
+        contentAlignment = Alignment.Center
+    ) {
+        content()
+    }
+}
+
+/** Tall enough for the raised Create circle, which is the biggest of the four. */
+private val NavIconSlotHeight = 40.dp

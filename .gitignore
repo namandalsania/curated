@@ -1,0 +1,24 @@
+# Secrets - never commit. Templates (.env.example) are fine.
+.env
+local.properties
+*.jks
+*.keystore
+
+# Build output
+build/
+.gradle/
+.kotlin/
+.cxx/
+.externalNativeBuild/
+captures/
+*.apk
+*.aab
+
+# Dependencies
+node_modules/
+
+# IDE / OS
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
