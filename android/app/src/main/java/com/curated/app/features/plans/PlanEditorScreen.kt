@@ -144,6 +144,7 @@ fun PlanEditorScreen(
         AddPlacesSheet(
             day = day,
             places = state.addablePlaces,
+            hasSavedPlaces = state.savedPlaces.isNotEmpty(),
             onAdd = { ids -> viewModel.addPlaces(ids, day); addingToDay = null },
             onAddCustom = { addingToDay = null; addingCustomToDay = day },
             onOpenSavedPlaces = { addingToDay = null; onOpenSavedPlaces() },
@@ -429,6 +430,7 @@ private fun DaySection(
 private fun AddPlacesSheet(
     day: Int,
     places: List<SavedPlace>,
+    hasSavedPlaces: Boolean,
     onAdd: (List<String>) -> Unit,
     onAddCustom: () -> Unit,
     onOpenSavedPlaces: () -> Unit,
@@ -467,7 +469,11 @@ private fun AddPlacesSheet(
             }
             if (places.isEmpty()) {
                 Text(
-                    "Every place you've saved is already in this plan. Save more from other people's trips.",
+                    if (hasSavedPlaces) {
+                        "Every place you've saved is already in this plan. Save more from other people's trips."
+                    } else {
+                        "You haven't saved any places yet. Tap the bookmark on a place in someone's trip to save it."
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(Spacing.md)

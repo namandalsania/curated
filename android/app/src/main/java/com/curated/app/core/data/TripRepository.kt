@@ -160,7 +160,7 @@ class TripRepository(private val client: SupabaseClient) {
     suspend fun fetchTripCompleteness(tripIds: List<String>): Map<String, TripCompleteness> {
         if (tripIds.isEmpty()) return emptyMap()
         return postgrest.from("stops")
-            .select(columns = Columns.raw("trip_id,caption,name,order_in_day")) {
+            .select(columns = Columns.raw("trip_id,caption,name,order_in_day,$STOP_DAY_EMBED")) {
                 filter { isIn("trip_id", tripIds) }
             }
             .decodeList<StopCaptionRow>()
@@ -169,7 +169,7 @@ class TripRepository(private val client: SupabaseClient) {
                 TripCompleteness(
                     stopCount = rows.size,
                     captionedStopCount = rows.count { !it.caption.isNullOrBlank() },
-                    stopNames = rows.sortedBy { it.orderInDay }.map { it.name }
+                    stopNames = rows.sortedWith(compareBy({ it.day.sortKey() }, { it.orderInDay })).map { it.name }
                 )
             }
     }
@@ -183,13 +183,16 @@ class TripRepository(private val client: SupabaseClient) {
     suspend fun fetchStopSummaries(tripIds: List<String>): Map<String, StopSummary> {
         if (tripIds.isEmpty()) return emptyMap()
         return postgrest.from("stops")
-            .select(columns = Columns.raw("trip_id,name,order_in_day")) {
+            .select(columns = Columns.raw("trip_id,name,order_in_day,$STOP_DAY_EMBED")) {
                 filter { isIn("trip_id", tripIds) }
             }
             .decodeList<StopNameRow>()
             .groupBy { it.tripId }
             .mapValues { (_, rows) ->
-                StopSummary(count = rows.size, names = rows.sortedBy { it.orderInDay }.map { it.name })
+                StopSummary(
+                    count = rows.size,
+                    names = rows.sortedWith(compareBy({ it.day.sortKey() }, { it.orderInDay })).map { it.name }
+                )
             }
     }
 
@@ -632,15 +635,33 @@ private data class StopCaptionRow(
     @SerialName("trip_id") val tripId: String,
     val caption: String? = null,
     val name: String = "",
-    @SerialName("order_in_day") val orderInDay: Int = 0
+    @SerialName("order_in_day") val orderInDay: Int = 0,
+    val day: StopDayRef? = null
 )
 
 @Serializable
 private data class StopNameRow(
     @SerialName("trip_id") val tripId: String,
     val name: String = "",
-    @SerialName("order_in_day") val orderInDay: Int = 0
+    @SerialName("order_in_day") val orderInDay: Int = 0,
+    val day: StopDayRef? = null
 )
+
+/**
+ * The stop's day, embedded so a trip's stops sort by day before position -
+ * order_in_day restarts at 1 every day, so on its own it interleaves days.
+ * Null when the stop has no day or the day isn't visible to this user yet.
+ */
+@Serializable
+private data class StopDayRef(@SerialName("day_index") val dayIndex: Int)
+
+private fun StopDayRef?.sortKey(): Int = this?.dayIndex ?: Int.MAX_VALUE
+
+/**
+ * stops has two foreign keys to days (day_id alone, and day_id + trip_id), so
+ * PostgREST has to be told which one to embed through.
+ */
+private const val STOP_DAY_EMBED = "day:days!stops_day_id_fkey(day_index)"
 
 @Serializable
 private data class StopLocationRow(

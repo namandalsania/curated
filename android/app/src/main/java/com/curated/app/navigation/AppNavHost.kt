@@ -89,7 +89,9 @@ fun AppNavHost(currentUserId: String) {
                     )
                     NavigationBarItem(
                         selected = currentDestination.isInHierarchy(CreateRoutes.GRAPH),
-                        onClick = { navController.navigate(CreateRoutes.GRAPH) { launchSingleTop = true } },
+                        // A tab like the others: pushed onto whichever tab was open, it
+                        // got saved with that tab and came back in place of its root.
+                        onClick = { navController.navigateToTab(CreateRoutes.GRAPH) },
                         icon = {
                             // The one FAB-style element in the bottom bar: raised
                             // above the flat chrome to signal "this is actionable."
