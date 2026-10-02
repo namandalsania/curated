@@ -18,6 +18,7 @@ import com.curated.app.core.data.SupabaseProvider
 import com.curated.app.core.data.TripDaySection
 import com.curated.app.core.data.TripRepository
 import com.curated.app.core.geocode.GeocodingService
+import com.curated.app.core.geocode.PlaceSearchService
 import com.curated.app.core.model.Day
 import com.curated.app.core.model.StopCategory
 import com.curated.app.core.model.Trip
@@ -119,8 +120,8 @@ data class ImportReview(
     val endDate: LocalDate?
 )
 
-/** A group of photos that will become one stop, already named. */
-private class NamedCluster(val cluster: PhotoCluster, val name: String)
+/** A group of photos that will become one stop, already named and sorted. */
+private class NamedCluster(val cluster: PhotoCluster, val name: String, val category: StopCategory)
 
 private fun LocalDate.plusDays(days: Int): LocalDate = LocalDate.fromEpochDays(toEpochDays() + days)
 
@@ -133,6 +134,7 @@ class CreateTripViewModel(
     private val authRepository: AuthRepository,
     private val tripRepository: TripRepository,
     private val geocodingService: GeocodingService,
+    private val placeSearch: PlaceSearchService,
     private val photoStorageRepository: PhotoStorageRepository,
     private val socialRepository: SocialRepository,
     private val notificationRepository: NotificationRepository
@@ -210,7 +212,7 @@ class CreateTripViewModel(
                 val exifData = withContext(Dispatchers.Default) { uris.map { PhotoExifReader.read(context, it) } }
                 val stopsAdded = addClusteredStops(tripId, nameClusters(exifData)) { photos -> dayIndexFor(photos) }
                 _state.update {
-                    it.copy(isImportingPhotos = false, importSummary = importSummary(stopsAdded, exifData.count { !it.hasLocation }, otherDays = 0))
+                    it.copy(isImportingPhotos = false, importSummary = importSummaryText(stopsAdded, exifData.count { !it.hasLocation }, otherDays = 0))
                 }
                 reload()
             } catch (e: Exception) {
@@ -234,7 +236,7 @@ class CreateTripViewModel(
                 val (sameDay, otherDays) = LiveTripRules.splitByDay(exifData, date, TimeZone.currentSystemDefault()) { it.takenAt }
                 val stopsAdded = addClusteredStops(tripId, nameClusters(sameDay)) { dayIndex }
                 _state.update {
-                    it.copy(isImportingPhotos = false, importSummary = importSummary(stopsAdded, sameDay.count { !it.hasLocation }, otherDays.size, dayIndex))
+                    it.copy(isImportingPhotos = false, importSummary = importSummaryText(stopsAdded, sameDay.count { !it.hasLocation }, otherDays.size, dayIndex))
                 }
                 reload()
             } catch (e: Exception) {
@@ -317,7 +319,7 @@ class CreateTripViewModel(
                     it.copy(
                         isSaving = false,
                         importReview = null,
-                        importSummary = importSummary(stopsAdded, review.withoutLocation, otherDays = 0)
+                        importSummary = importSummaryText(stopsAdded, review.withoutLocation, otherDays = 0)
                     )
                 }
                 reload()
@@ -329,13 +331,19 @@ class CreateTripViewModel(
         }
     }
 
-    /** Groups the geo-tagged photos into stops, each named from where it is. */
+    /**
+     * Groups the geo-tagged photos into stops, each named for the landmark it's
+     * at (Places), or failing that the street (the geocoder).
+     */
     private suspend fun nameClusters(exifData: List<PhotoExifData>): List<NamedCluster> {
         val located = exifData.filter { it.hasLocation }
         val clusters = withContext(Dispatchers.Default) { StopClusteringEngine.cluster(located) }
         return clusters.map { cluster ->
-            val name = geocodingService.reverseGeocode(cluster.centerLatitude, cluster.centerLongitude) ?: "Unnamed stop"
-            NamedCluster(cluster, name)
+            val landmark = placeSearch.nearbyLandmark(cluster.centerLatitude, cluster.centerLongitude)
+            val name = landmark?.name
+                ?: geocodingService.reverseGeocode(cluster.centerLatitude, cluster.centerLongitude)
+                ?: "Unnamed stop"
+            NamedCluster(cluster, name, landmark?.category ?: StopCategory.OTHER)
         }
     }
 
@@ -358,7 +366,7 @@ class CreateTripViewModel(
                     dayIndex = dayIndex,
                     orderInDay = _state.value.stopsOn(dayIndex).size + alreadyAdded,
                     name = named.name,
-                    category = StopCategory.OTHER,
+                    category = named.category,
                     latitude = cluster.centerLatitude,
                     longitude = cluster.centerLongitude,
                     arrivalTime = cluster.photos.firstNotNullOfOrNull { photo -> photo.takenAt?.localTime() }
@@ -375,25 +383,6 @@ class CreateTripViewModel(
         }
         return clusters.size
     }
-
-    private fun importSummary(stopsAdded: Int, withoutLocation: Int, otherDays: Int, dayIndex: Int? = null): String =
-        buildString {
-            append(if (stopsAdded == 1) "Added 1 stop" else "Added $stopsAdded stops")
-            if (withoutLocation > 0) {
-                append(". ")
-                append(
-                    if (withoutLocation == 1) "1 photo had no location, so add that place yourself."
-                    else "$withoutLocation photos had no location, so add those places yourself."
-                )
-            }
-            if (otherDays > 0 && dayIndex != null) {
-                append(". ")
-                append(
-                    if (otherDays == 1) "1 photo was taken on another day, so it wasn't added to Day $dayIndex."
-                    else "$otherDays photos were taken on other days, so they weren't added to Day $dayIndex."
-                )
-            }
-        }
 
     // --- Live trips -----------------------------------------------------------
 
@@ -702,6 +691,7 @@ class CreateTripViewModel(
                     authRepository = AuthRepository(client),
                     tripRepository = TripRepository(client),
                     geocodingService = GeocodingService(appContext),
+                    placeSearch = PlaceSearchService(appContext),
                     photoStorageRepository = PhotoStorageRepository(client, appContext),
                     socialRepository = SocialRepository(client),
                     notificationRepository = NotificationRepository(client)
@@ -713,3 +703,23 @@ class CreateTripViewModel(
 
 private fun kotlinx.datetime.Instant.localTime(): LocalTime =
     toLocalDateTime(TimeZone.currentSystemDefault()).time
+
+/**
+ * What a photo import did, in whole sentences: "Added 2 stops. 1 photo had no
+ * location, so add that place yourself. 1 photo was taken on another day, so
+ * it wasn't added to Day 1." [dayIndex] is set only for a single day's import.
+ */
+internal fun importSummaryText(stopsAdded: Int, withoutLocation: Int, otherDays: Int, dayIndex: Int? = null): String =
+    listOfNotNull(
+        if (stopsAdded == 1) "Added 1 stop." else "Added $stopsAdded stops.",
+        when {
+            withoutLocation == 1 -> "1 photo had no location, so add that place yourself."
+            withoutLocation > 1 -> "$withoutLocation photos had no location, so add those places yourself."
+            else -> null
+        },
+        when {
+            dayIndex == null || otherDays == 0 -> null
+            otherDays == 1 -> "1 photo was taken on another day, so it wasn't added to Day $dayIndex."
+            else -> "$otherDays photos were taken on other days, so they weren't added to Day $dayIndex."
+        }
+    ).joinToString(" ")

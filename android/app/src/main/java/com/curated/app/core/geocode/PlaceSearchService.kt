@@ -5,11 +5,14 @@ import android.content.pm.PackageManager
 import android.util.Log
 import com.curated.app.core.model.StopCategory
 import com.google.android.libraries.places.api.Places
+import com.google.android.gms.maps.model.LatLng
 import com.google.android.libraries.places.api.model.AutocompleteSessionToken
+import com.google.android.libraries.places.api.model.CircularBounds
 import com.google.android.libraries.places.api.model.Place
 import com.google.android.libraries.places.api.net.FetchPlaceRequest
 import com.google.android.libraries.places.api.net.FindAutocompletePredictionsRequest
 import com.google.android.libraries.places.api.net.PlacesClient
+import com.google.android.libraries.places.api.net.SearchNearbyRequest
 import com.google.android.gms.tasks.Task
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -155,8 +158,49 @@ class PlaceSearchService(context: Context) {
         )
     }
 
+    /**
+     * The most notable place near a point - "Belém Tower", not "N6 178" - for
+     * naming a stop made from photos. Null when Places isn't available, finds
+     * nothing close, or fails; the caller falls back to the geocoder.
+     *
+     * Ranked by popularity rather than distance: a cluster's center sits
+     * somewhere among where the photos were taken, and the landmark people
+     * came for beats whichever kiosk happens to be nearest.
+     */
+    suspend fun nearbyLandmark(latitude: Double, longitude: Double): PlaceDetails? {
+        val places = client ?: return null
+        val request = SearchNearbyRequest.builder(
+            CircularBounds.newInstance(LatLng(latitude, longitude), LANDMARK_RADIUS_METERS),
+            listOf(Place.Field.DISPLAY_NAME, Place.Field.LOCATION, Place.Field.TYPES)
+        )
+            .setRankPreference(SearchNearbyRequest.RankPreference.POPULARITY)
+            .setExcludedPrimaryTypes(NOT_A_STOP)
+            .setMaxResultCount(1)
+            .build()
+        val place = runCatching { places.searchNearby(request).await() }
+            .onFailure { Log.w(TAG, "Nearby search failed at $latitude,$longitude; using the geocoder", it) }
+            .getOrNull()
+            ?.places
+            ?.firstOrNull { !it.displayName.isNullOrBlank() }
+            ?: return null
+        return PlaceDetails(
+            name = place.displayName!!,
+            address = null,
+            // The stop stays where the photos were; the landmark only names it.
+            latitude = latitude,
+            longitude = longitude,
+            category = categoryOf(place.placeTypes.orEmpty())
+        )
+    }
+
     companion object {
         private const val TAG = "PlaceSearchService"
+
+        /** Half the clustering radius: close enough that the name is about these photos. */
+        private const val LANDMARK_RADIUS_METERS = 150.0
+
+        /** Places a photo is often taken near but that nobody would call the stop. */
+        private val NOT_A_STOP = listOf("atm", "parking", "bus_stop", "gas_station")
 
         /** Places' collection of localities, administrative areas and countries. */
         private const val REGIONS = "(regions)"

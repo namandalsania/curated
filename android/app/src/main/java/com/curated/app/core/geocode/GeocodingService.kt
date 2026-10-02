@@ -36,7 +36,9 @@ class GeocodingService(private val context: Context) {
             val geocoder = Geocoder(context, Locale.getDefault())
             val results = geocoder.getFromLocation(latitude, longitude, 1)
             results?.firstOrNull()?.let { address ->
-                address.featureName
+                // featureName is often just the house number ("178", "17B"),
+                // which names nothing; the street does better.
+                address.featureName?.takeIf { it != address.subThoroughfare }
                     ?: address.thoroughfare
                     ?: address.locality
                     ?: address.subAdminArea
