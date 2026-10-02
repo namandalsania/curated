@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.curated.app.core.cluster.PhotoCluster
 import com.curated.app.core.cluster.StopClusteringEngine
 import com.curated.app.core.data.AuthRepository
 import com.curated.app.core.data.NotificationRepository
@@ -48,6 +49,10 @@ data class CreateWizardState(
     val isSaving: Boolean = false,
     val isImportingPhotos: Boolean = false,
     val importSummary: String? = null,
+    /** Reading picked photos before the trip exists; see [CreateTripViewModel.analyzePhotos]. */
+    val isAnalyzingPhotos: Boolean = false,
+    /** What the photos said, waiting on the review screen to become a trip. */
+    val importReview: ImportReview? = null,
     /** Stops per day, straight from the draft rows. */
     val days: List<TripDaySection> = emptyList(),
     val isPublishing: Boolean = false,
@@ -98,6 +103,22 @@ data class CreateWizardState(
     val daysEndTripWillPublish: List<Int> get() = LiveTripRules.daysEndTripWillPublish(liveDays, days)
 }
 
+/**
+ * Picked photos, read but not yet saved: the trip they suggest, for the review
+ * screen to show pre-filled. Blank or null where the photos didn't say.
+ */
+data class ImportReview(
+    val photoCount: Int,
+    val stopCount: Int,
+    val withoutLocation: Int,
+    val destination: String,
+    val startDate: LocalDate?,
+    val endDate: LocalDate?
+)
+
+/** A group of photos that will become one stop, already named. */
+private class NamedCluster(val cluster: PhotoCluster, val name: String)
+
 private fun LocalDate.plusDays(days: Int): LocalDate = LocalDate.fromEpochDays(toEpochDays() + days)
 
 /**
@@ -120,29 +141,8 @@ class CreateTripViewModel(
     /** One write at a time, so reorders can't race each other. */
     private val writeLock = Mutex()
 
-    /** Creates the draft. Safe to call again - it updates the existing one. */
-    fun startDraft(title: String, destination: String, startDate: LocalDate, endDate: LocalDate, onReady: () -> Unit) {
-        val authorId = authRepository.currentUserId() ?: return
-        val existingId = _state.value.tripId
-        _state.update {
-            it.copy(title = title, destination = destination, startDate = startDate, endDate = endDate, isSaving = true, error = null)
-        }
-        viewModelScope.launch {
-            try {
-                if (existingId == null) {
-                    val trip = tripRepository.createDraftTrip(authorId, title, destination, startDate, endDate)
-                    _state.update { it.copy(tripId = trip.id, isSaving = false) }
-                } else {
-                    tripRepository.updateTripBasics(existingId, title, destination, startDate, endDate)
-                    _state.update { it.copy(isSaving = false) }
-                }
-                onReady()
-            } catch (e: Exception) {
-                Log.w(TAG, "Couldn't start the draft", e)
-                _state.update { it.copy(isSaving = false, error = "Couldn't save this trip. Try again.") }
-            }
-        }
-    }
+    /** The stops [analyzePhotos] found, written once the review screen creates the trip. */
+    private var pendingStops: List<NamedCluster> = emptyList()
 
     /** Opens an existing draft from Profile - Drafts. */
     fun resumeDraft(tripId: String) {
@@ -204,9 +204,9 @@ class CreateTripViewModel(
             _state.update { it.copy(isImportingPhotos = true, importSummary = null, error = null) }
             try {
                 val exifData = withContext(Dispatchers.Default) { uris.map { PhotoExifReader.read(context, it) } }
-                val stopsAdded = addClusteredStops(tripId, exifData) { photos -> dayIndexFor(photos) }
+                val stopsAdded = addClusteredStops(tripId, nameClusters(exifData)) { photos -> dayIndexFor(photos) }
                 _state.update {
-                    it.copy(isImportingPhotos = false, importSummary = importSummary(stopsAdded, exifData, otherDays = 0))
+                    it.copy(isImportingPhotos = false, importSummary = importSummary(stopsAdded, exifData.count { !it.hasLocation }, otherDays = 0))
                 }
                 reload()
             } catch (e: Exception) {
@@ -228,9 +228,9 @@ class CreateTripViewModel(
             try {
                 val exifData = withContext(Dispatchers.Default) { uris.map { PhotoExifReader.read(context, it) } }
                 val (sameDay, otherDays) = LiveTripRules.splitByDay(exifData, date, TimeZone.currentSystemDefault()) { it.takenAt }
-                val stopsAdded = addClusteredStops(tripId, sameDay) { dayIndex }
+                val stopsAdded = addClusteredStops(tripId, nameClusters(sameDay)) { dayIndex }
                 _state.update {
-                    it.copy(isImportingPhotos = false, importSummary = importSummary(stopsAdded, sameDay, otherDays.size, dayIndex))
+                    it.copy(isImportingPhotos = false, importSummary = importSummary(stopsAdded, sameDay.count { !it.hasLocation }, otherDays.size, dayIndex))
                 }
                 reload()
             } catch (e: Exception) {
@@ -240,28 +240,105 @@ class CreateTripViewModel(
         }
     }
 
-    /** Clusters the geo-tagged photos into stops and writes them, each on the day [dayFor] picks. */
-    private suspend fun addClusteredStops(
-        tripId: String,
-        exifData: List<PhotoExifData>,
-        dayFor: (List<PhotoExifData>) -> Int
-    ): Int {
+    /**
+     * The first half of "Build it from your photos", before any trip exists:
+     * reads the photos, groups them into stops and names them, and works out
+     * the destination and dates for [ImportReview]. Nothing is written until
+     * [createImportedTrip].
+     */
+    fun analyzePhotos(context: Context, uris: List<Uri>) {
+        pendingStops = emptyList()
+        _state.update { CreateWizardState(isAnalyzingPhotos = true) }
+        viewModelScope.launch {
+            try {
+                val exifData = withContext(Dispatchers.Default) { uris.map { PhotoExifReader.read(context, it) } }
+                val named = nameClusters(exifData)
+                val places = sampleForDestination(named.map { it.cluster }).mapNotNull {
+                    geocodingService.reverseGeocodePlace(it.centerLatitude, it.centerLongitude)
+                }
+                val dates = TripSuggestions.dateRange(exifData.map { it.takenAt }, TimeZone.currentSystemDefault())
+                pendingStops = named
+                _state.update {
+                    it.copy(
+                        isAnalyzingPhotos = false,
+                        importReview = ImportReview(
+                            photoCount = exifData.size,
+                            stopCount = named.size,
+                            withoutLocation = exifData.count { photo -> !photo.hasLocation },
+                            destination = TripSuggestions.destination(places),
+                            startDate = dates?.first,
+                            endDate = dates?.second
+                        )
+                    )
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Couldn't read the picked photos", e)
+                _state.update { it.copy(isAnalyzingPhotos = false, error = "Couldn't read those photos. Try again.") }
+            }
+        }
+    }
+
+    /**
+     * Creates the draft from the review screen, then writes the stops
+     * [analyzePhotos] found - each on the day its photos were taken.
+     */
+    fun createImportedTrip(title: String, destination: String, startDate: LocalDate, endDate: LocalDate, onReady: () -> Unit) {
+        val authorId = authRepository.currentUserId() ?: return
+        val review = _state.value.importReview ?: return
+        _state.update {
+            it.copy(title = title, destination = destination, startDate = startDate, endDate = endDate, isSaving = true, error = null)
+        }
+        viewModelScope.launch {
+            try {
+                val trip = tripRepository.createDraftTrip(authorId, title, destination, startDate, endDate)
+                _state.update { it.copy(tripId = trip.id) }
+                val stopsAdded = addClusteredStops(trip.id, pendingStops) { photos -> dayIndexFor(photos) }
+                pendingStops = emptyList()
+                _state.update {
+                    it.copy(
+                        isSaving = false,
+                        importReview = null,
+                        importSummary = importSummary(stopsAdded, review.withoutLocation, otherDays = 0)
+                    )
+                }
+                reload()
+                onReady()
+            } catch (e: Exception) {
+                Log.w(TAG, "Couldn't create the trip from photos", e)
+                _state.update { it.copy(isSaving = false, error = "Couldn't save this trip. Try again.") }
+            }
+        }
+    }
+
+    /** Groups the geo-tagged photos into stops, each named from where it is. */
+    private suspend fun nameClusters(exifData: List<PhotoExifData>): List<NamedCluster> {
         val located = exifData.filter { it.hasLocation }
         val clusters = withContext(Dispatchers.Default) { StopClusteringEngine.cluster(located) }
+        return clusters.map { cluster ->
+            val name = geocodingService.reverseGeocode(cluster.centerLatitude, cluster.centerLongitude) ?: "Unnamed stop"
+            NamedCluster(cluster, name)
+        }
+    }
+
+    /** Writes named stops into the trip, each on the day [dayFor] picks. */
+    private suspend fun addClusteredStops(
+        tripId: String,
+        clusters: List<NamedCluster>,
+        dayFor: (List<PhotoExifData>) -> Int
+    ): Int {
         writeLock.withLock {
             // Counted as we go: several clusters can land on the same day before
             // the state reloads.
             val addedPerDay = mutableMapOf<Int, Int>()
-            for (cluster in clusters) {
-                val placeName = geocodingService.reverseGeocode(cluster.centerLatitude, cluster.centerLongitude)
-                    ?: "Unnamed stop"
+            for (named in clusters) {
+                val cluster = named.cluster
                 val dayIndex = dayFor(cluster.photos)
                 val alreadyAdded = addedPerDay.getOrDefault(dayIndex, 0)
                 val stop = tripRepository.addStop(
                     tripId = tripId,
                     dayIndex = dayIndex,
                     orderInDay = _state.value.stopsOn(dayIndex).size + alreadyAdded,
-                    name = placeName,
+                    name = named.name,
                     category = StopCategory.OTHER,
                     latitude = cluster.centerLatitude,
                     longitude = cluster.centerLongitude,
@@ -280,10 +357,9 @@ class CreateTripViewModel(
         return clusters.size
     }
 
-    private fun importSummary(stopsAdded: Int, used: List<PhotoExifData>, otherDays: Int, dayIndex: Int? = null): String =
+    private fun importSummary(stopsAdded: Int, withoutLocation: Int, otherDays: Int, dayIndex: Int? = null): String =
         buildString {
             append(if (stopsAdded == 1) "Added 1 stop" else "Added $stopsAdded stops")
-            val withoutLocation = used.count { !it.hasLocation }
             if (withoutLocation > 0) {
                 append(". ")
                 append(
@@ -302,13 +378,21 @@ class CreateTripViewModel(
 
     // --- Live trips -----------------------------------------------------------
 
-    /** Creates a live trip starting [startDate]; nothing is public until a day is posted. */
-    fun startLiveTrip(title: String, destination: String, startDate: LocalDate, onReady: (String) -> Unit) {
+    /**
+     * Creates a live trip starting today, titled from where and when
+     * ("Lisbon · October 2026") - [renameTrip] changes it later. Nothing is
+     * public until a day is posted.
+     */
+    fun startLiveTrip(destination: String, onReady: (String) -> Unit) {
         val authorId = authRepository.currentUserId() ?: return
+        val place = destination.trim()
+        if (place.isEmpty()) return
+        val startDate = today()
         _state.update { it.copy(isSaving = true, error = null) }
         viewModelScope.launch {
             try {
-                val trip = tripRepository.createLiveTrip(authorId, title, destination, startDate)
+                val title = TripSuggestions.title(place, startDate)
+                val trip = tripRepository.createLiveTrip(authorId, title, place, startDate)
                 _state.update {
                     CreateWizardState(
                         tripId = trip.id,
@@ -326,6 +410,15 @@ class CreateTripViewModel(
                 _state.update { it.copy(isSaving = false, error = "Couldn't start this trip. Try again.") }
             }
         }
+    }
+
+    /** Renames the trip. A blank title is ignored rather than saved. */
+    fun renameTrip(title: String) {
+        val tripId = _state.value.tripId ?: return
+        val trimmed = title.trim()
+        if (trimmed.isEmpty() || trimmed == _state.value.title) return
+        _state.update { it.copy(title = trimmed) }
+        write { tripRepository.updateTripTitle(tripId, trimmed) }
     }
 
     /** Opens a live trip, from Profile or straight after starting it. */
@@ -416,6 +509,15 @@ class CreateTripViewModel(
     }
 
     private fun today(): LocalDate = Clock.System.todayIn(TimeZone.currentSystemDefault())
+
+    /**
+     * Up to [DESTINATION_SAMPLES] stops spread across the trip - enough to tell
+     * where it was without a geocoder lookup for every stop.
+     */
+    private fun sampleForDestination(clusters: List<PhotoCluster>): List<PhotoCluster> {
+        if (clusters.size <= DESTINATION_SAMPLES) return clusters
+        return List(DESTINATION_SAMPLES) { i -> clusters[i * clusters.size / DESTINATION_SAMPLES] }
+    }
 
     /** Which day a cluster belongs on, from when its photos were taken. */
     private fun dayIndexFor(photos: List<PhotoExifData>): Int {
@@ -559,6 +661,7 @@ class CreateTripViewModel(
 
     companion object {
         private const val TAG = "CreateTripViewModel"
+        private const val DESTINATION_SAMPLES = 8
 
         fun factory(context: Context) = viewModelFactory {
             initializer {

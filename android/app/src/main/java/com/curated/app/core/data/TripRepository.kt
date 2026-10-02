@@ -307,6 +307,11 @@ class TripRepository(private val client: SupabaseClient) {
             .update(TripBasicsRow(title, destination, startDate, endDate)) { filter { eq("id", tripId) } }
     }
 
+    suspend fun updateTripTitle(tripId: String, title: String) {
+        postgrest.from("trips")
+            .update(TripTitleRow(title)) { filter { eq("id", tripId) } }
+    }
+
     /**
      * A trip that starts now and is posted a day at a time.
      *
@@ -710,6 +715,9 @@ private data class NewStopPhotoRow(
     @SerialName("taken_at") val takenAt: Instant? = null,
     @SerialName("order_index") val orderIndex: Int
 )
+
+@Serializable
+private data class TripTitleRow(val title: String)
 
 @Serializable
 private data class TripBasicsRow(

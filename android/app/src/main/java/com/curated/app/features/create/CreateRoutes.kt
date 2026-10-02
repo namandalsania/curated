@@ -3,6 +3,8 @@ package com.curated.app.features.create
 object CreateRoutes {
     const val GRAPH = "create_graph"
     const val NEW_TRIP = "create/new_trip"
+    const val LIVE_START = "create/live_start"
+    const val IMPORT_REVIEW = "create/import_review"
     const val IMPORT_PHOTOS = "create/import_photos"
     const val BUILDER = "create/builder"
     const val ADD_PLACE_PATTERN = "create/add_place/{dayIndex}"

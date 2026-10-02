@@ -49,7 +49,7 @@ fun PublishScreen(
                     Column {
                         Text("Publish")
                         Text(
-                            "Step 3 of 3 · Last look",
+                            "Last look before it goes public",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

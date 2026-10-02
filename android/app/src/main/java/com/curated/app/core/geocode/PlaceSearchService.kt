@@ -77,8 +77,13 @@ class PlaceSearchService(context: Context) {
         null
     }
 
-    /** Suggestions as someone types. Falls back to address search when Places can't answer. */
-    suspend fun search(query: String): List<PlaceSuggestion> {
+    /**
+     * Suggestions as someone types. Falls back to address search when Places can't answer.
+     *
+     * [regionsOnly] keeps to cities, regions and countries - what a trip's
+     * destination is - and leaves out businesses and addresses.
+     */
+    suspend fun search(query: String, regionsOnly: Boolean = false): List<PlaceSuggestion> {
         if (query.isBlank()) return emptyList()
         val places = client
         if (places != null) {
@@ -86,6 +91,7 @@ class PlaceSearchService(context: Context) {
             val request = FindAutocompletePredictionsRequest.builder()
                 .setQuery(query)
                 .setSessionToken(token)
+                .apply { if (regionsOnly) setTypesFilter(listOf(REGIONS)) }
                 .build()
             val predictions = runCatching { places.findAutocompletePredictions(request).await() }
                 .onFailure { error ->
@@ -151,6 +157,9 @@ class PlaceSearchService(context: Context) {
 
     companion object {
         private const val TAG = "PlaceSearchService"
+
+        /** Places' collection of localities, administrative areas and countries. */
+        private const val REGIONS = "(regions)"
     }
 }
 

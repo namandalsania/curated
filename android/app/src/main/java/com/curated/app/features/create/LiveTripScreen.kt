@@ -15,14 +15,18 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -38,6 +42,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -68,6 +73,7 @@ fun LiveTripScreen(
     val state by viewModel.state.collectAsState()
     var editing by remember { mutableStateOf<StopWithPhotos?>(null) }
     var showEndSheet by remember { mutableStateOf(false) }
+    var renaming by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.endedTrip) {
         state.endedTrip?.let { trip ->
@@ -115,9 +121,21 @@ fun LiveTripScreen(
         )
     }
 
+    if (renaming) {
+        RenameTripDialog(
+            current = state.title,
+            onRename = { title ->
+                viewModel.renameTrip(title)
+                renaming = false
+            },
+            onDismiss = { renaming = false }
+        )
+    }
+
     LiveTripContent(
         state = state,
         onBack = onBack,
+        onRename = { renaming = true },
         onOpenDay = onOpenDay,
         onEditUnassigned = { editing = it },
         onEndTrip = { showEndSheet = true }
@@ -129,6 +147,7 @@ fun LiveTripScreen(
 private fun LiveTripContent(
     state: CreateWizardState,
     onBack: () -> Unit,
+    onRename: () -> Unit,
     onOpenDay: (Int) -> Unit,
     onEditUnassigned: (StopWithPhotos) -> Unit,
     onEndTrip: () -> Unit
@@ -151,7 +170,13 @@ private fun LiveTripContent(
                         Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back")
                     }
                 },
-                actions = { Tag("LIVE", style = TagStyle.Accent, modifier = Modifier.padding(end = Spacing.md)) }
+                actions = {
+                    // The title was made up when the trip started; this is where it gets changed.
+                    IconButton(onClick = onRename) {
+                        Icon(Icons.Outlined.Edit, contentDescription = "Rename trip")
+                    }
+                    Tag("LIVE", style = TagStyle.Accent, modifier = Modifier.padding(end = Spacing.md))
+                }
             )
         },
         bottomBar = {
@@ -208,6 +233,28 @@ private fun LiveTripContent(
             }
         }
     }
+}
+
+@Composable
+private fun RenameTripDialog(current: String, onRename: (String) -> Unit, onDismiss: () -> Unit) {
+    var title by remember { mutableStateOf(current) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Rename trip") },
+        text = {
+            OutlinedTextField(
+                value = title,
+                onValueChange = { title = it },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onRename(title) }, enabled = title.isNotBlank()) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
 }
 
 @Composable

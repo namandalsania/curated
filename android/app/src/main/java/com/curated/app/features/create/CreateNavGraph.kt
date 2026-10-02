@@ -15,25 +15,49 @@ import androidx.navigation.navArgument
 import com.curated.app.navigation.AppRoutes
 
 /**
- * Three steps: the basics, the itinerary, publish. Photo import and adding a
- * place hang off the builder rather than sitting in the middle of the path.
+ * Two ways in, chosen on [NewTripScreen]:
  *
- * A live trip branches off the first step instead: the live screen, then one
- * Post Day screen per day, until End trip.
+ * - Traveling now: where are you, then straight into posting Day 1. The live
+ *   screen sits underneath, with one Post Day screen per day, until End trip.
+ * - Already took it: the photo picker, a review of what the photos said, then
+ *   the builder and publish. Adding a place or more photos hangs off the builder.
  */
 fun NavGraphBuilder.createNavGraph(navController: NavController) {
     navigation(startDestination = CreateRoutes.NEW_TRIP, route = CreateRoutes.GRAPH) {
         composable(CreateRoutes.NEW_TRIP) { entry ->
+            val context = LocalContext.current
             val viewModel = entry.createGraphViewModel(navController)
             NewTripScreen(
+                onTravelingNow = { navController.navigate(CreateRoutes.LIVE_START) },
+                onPhotosPicked = { uris ->
+                    viewModel.analyzePhotos(context, uris)
+                    navController.navigate(CreateRoutes.IMPORT_REVIEW)
+                }
+            )
+        }
+        composable(CreateRoutes.LIVE_START) { entry ->
+            val viewModel = entry.createGraphViewModel(navController)
+            LiveStartScreen(
                 viewModel = viewModel,
                 onBack = { navController.popBackStack() },
-                onStartFromPhotos = { navController.navigate(CreateRoutes.IMPORT_PHOTOS) },
-                onWriteItMyself = { navController.navigate(CreateRoutes.BUILDER) },
-                onLiveStarted = { tripId ->
+                onStarted = { tripId ->
+                    // The trip exists now, so its question isn't somewhere to go back to:
+                    // back from Day 1 is the live trip, and back from that is the start.
                     navController.navigate(CreateRoutes.live(tripId)) {
-                        // Back from a live trip goes home, not to a form for a trip that already exists.
-                        popUpTo(CreateRoutes.NEW_TRIP) { inclusive = true }
+                        popUpTo(CreateRoutes.LIVE_START) { inclusive = true }
+                    }
+                    navController.navigate(CreateRoutes.postDay(1))
+                }
+            )
+        }
+        composable(CreateRoutes.IMPORT_REVIEW) { entry ->
+            val viewModel = entry.createGraphViewModel(navController)
+            ImportReviewScreen(
+                viewModel = viewModel,
+                onBack = { navController.popBackStack() },
+                onCreated = {
+                    navController.navigate(CreateRoutes.BUILDER) {
+                        popUpTo(CreateRoutes.IMPORT_REVIEW) { inclusive = true }
                     }
                 }
             )

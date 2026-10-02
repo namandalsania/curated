@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.curated.app.core.data.StopWithPhotos
 import com.curated.app.core.format.displayText
+import com.curated.app.core.format.formatDateRange
 import com.curated.app.core.format.label
 import com.curated.app.core.format.shortDayText
 import com.curated.app.core.model.StopCategory
@@ -151,7 +152,10 @@ fun ItineraryBuilderScreen(
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            "Step 2 of 3 · Build your itinerary",
+                            listOfNotNull(
+                                state.destination.ifBlank { null },
+                                state.startDate?.let { start -> state.endDate?.let { end -> formatDateRange(start, end) } }
+                            ).joinToString(" · "),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
