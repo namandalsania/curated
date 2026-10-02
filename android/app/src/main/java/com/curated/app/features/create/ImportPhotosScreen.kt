@@ -1,8 +1,5 @@
 package com.curated.app.features.create
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -45,13 +42,10 @@ fun ImportPhotosScreen(
     val state by viewModel.state.collectAsState()
     var launched by remember { mutableStateOf(false) }
 
-    val pickPhotos = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickMultipleVisualMedia(100)
-    ) { uris ->
-        if (uris.isNotEmpty()) {
-            launched = true
-            viewModel.importPhotos(context, uris)
-        }
+    // Its stops come from where the photos were taken, so this picker keeps their GPS.
+    val pickPhotos = rememberGeoPhotoPicker { uris ->
+        launched = true
+        viewModel.importPhotos(context, uris)
     }
 
     // Once the import finishes, the itinerary is where the work continues.
@@ -102,7 +96,7 @@ fun ImportPhotosScreen(
             } else {
                 PrimaryButton(
                     onClick = {
-                        pickPhotos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        pickPhotos()
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {

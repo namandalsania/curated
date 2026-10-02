@@ -83,9 +83,8 @@ fun PostDayScreen(
         }
     }
 
-    val pickDayPhotos = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(100)) { uris ->
-        if (uris.isNotEmpty()) viewModel.importPhotosForDay(context, uris, dayIndex)
-    }
+    // Its stops come from where the photos were taken, so this picker keeps their GPS.
+    val pickDayPhotos = rememberGeoPhotoPicker { uris -> viewModel.importPhotosForDay(context, uris, dayIndex) }
     val addStopPhotos = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(20)) { uris ->
         val stopId = editing?.stop?.id
         if (stopId != null && uris.isNotEmpty()) viewModel.addPhotosToStop(stopId, context, uris)
@@ -190,7 +189,7 @@ fun PostDayScreen(
                 item(key = "photos") {
                     SecondaryButton(
                         onClick = {
-                            pickDayPhotos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                            pickDayPhotos()
                         },
                         enabled = !state.isImportingPhotos,
                         modifier = Modifier.fillMaxWidth().padding(top = Spacing.sm)

@@ -1,11 +1,6 @@
 package com.curated.app.features.create
 
-import android.Manifest
-import android.content.pm.PackageManager
 import android.net.Uri
-import android.os.Build
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -25,8 +20,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
-import androidx.core.content.ContextCompat
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -38,46 +31,19 @@ import com.curated.app.designsystem.components.HairlineCard
  * Where a new trip starts: two cards and nothing else. Each one goes straight
  * into its own path - there's no shared form behind them.
  *
- * "I already took this trip" opens a picker right here, so the photos come
- * first and the details are worked out from them. It's the system file picker
- * rather than the Photo Picker: the Photo Picker zeroes every photo's GPS, and
- * the destination and stops are built from it. On API 29+ it asks for
- * ACCESS_MEDIA_LOCATION first, which the file picker needs to keep the GPS.
- * The picker opens either way - a refusal only costs the location.
+ * "I already took this trip" opens the picker right here (see
+ * [rememberGeoPhotoPicker]), so the photos come first and the destination,
+ * dates and stops are worked out from them.
  */
 @Composable
 fun NewTripScreen(
     onTravelingNow: () -> Unit,
     onPhotosPicked: (List<Uri>) -> Unit
 ) {
-    val pickPhotos = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenMultipleDocuments()
-    ) { uris ->
-        // Backing out of the picker leaves you here to choose again.
-        if (uris.isNotEmpty()) onPhotosPicked(uris)
-    }
+    // Backing out of the picker leaves you here to choose again.
+    val pickPhotos = rememberGeoPhotoPicker(onPicked = onPhotosPicked)
 
-    val context = LocalContext.current
-    val launchPicker = {
-        pickPhotos.launch(arrayOf("image/*"))
-    }
-    val requestMediaLocation = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { launchPicker() }
-
-    NewTripChoices(
-        onTravelingNow = onTravelingNow,
-        onAlreadyTook = {
-            val needsMediaLocation = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
-                ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_MEDIA_LOCATION) !=
-                PackageManager.PERMISSION_GRANTED
-            if (needsMediaLocation) {
-                requestMediaLocation.launch(Manifest.permission.ACCESS_MEDIA_LOCATION)
-            } else {
-                launchPicker()
-            }
-        }
-    )
+    NewTripChoices(onTravelingNow = onTravelingNow, onAlreadyTook = pickPhotos)
 }
 
 @Composable
