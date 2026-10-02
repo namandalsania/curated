@@ -23,6 +23,22 @@ data class AuthGateState(
     val userId: String? = null
 )
 
+/**
+ * What the gate shows while the session is settling - Initializing, or a
+ * refresh that failed - rather than known to be signed in or out.
+ *
+ * Only the first launch waits on it. Once the app or profile setup is showing,
+ * it stays: auth-kt sets Initializing every time the app goes to the
+ * background with auto-refresh running (file picker, camera, Home button), and
+ * swapping in the spinner threw away the whole navigation stack, along with
+ * any result the app was waiting on.
+ */
+internal fun phaseWhileSettling(current: AuthGatePhase): AuthGatePhase =
+    when (current) {
+        AuthGatePhase.READY, AuthGatePhase.NEEDS_PROFILE -> current
+        AuthGatePhase.LOADING, AuthGatePhase.SIGNED_OUT -> AuthGatePhase.LOADING
+    }
+
 /** Drives which top-level flow (auth / profile setup / main app) is shown. */
 class AuthGateViewModel(private val authRepository: AuthRepository) : ViewModel() {
 
@@ -37,11 +53,19 @@ class AuthGateViewModel(private val authRepository: AuthRepository) : ViewModel(
                 .collect { (status, recovering) ->
                     when {
                         recovering -> _state.update { AuthGateState(phase = AuthGatePhase.SIGNED_OUT, userId = null) }
-                        status is SessionStatus.Authenticated -> evaluateProfile()
+                        status is SessionStatus.Authenticated -> {
+                            // Coming back to the foreground re-announces the same session.
+                            // The app is already open for this user; checking again only
+                            // risks a network failure undoing that.
+                            val current = _state.value
+                            if (current.phase != AuthGatePhase.READY || current.userId != authRepository.currentUserId()) {
+                                evaluateProfile()
+                            }
+                        }
                         status is SessionStatus.NotAuthenticated -> _state.update {
                             AuthGateState(phase = AuthGatePhase.SIGNED_OUT, userId = null)
                         }
-                        else -> _state.update { it.copy(phase = AuthGatePhase.LOADING) }
+                        else -> _state.update { it.copy(phase = phaseWhileSettling(it.phase)) }
                     }
                 }
         }
