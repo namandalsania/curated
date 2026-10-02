@@ -271,7 +271,8 @@ class TripRepository(private val client: SupabaseClient) {
         title: String,
         destination: String,
         startDate: LocalDate,
-        endDate: LocalDate
+        endDate: LocalDate,
+        visibility: TripVisibility = TripVisibility.PUBLIC
     ): Trip = insertTrip(
         NewTripRow(
             id = UUID.randomUUID().toString(),
@@ -280,7 +281,8 @@ class TripRepository(private val client: SupabaseClient) {
             destination = destination,
             startDate = startDate,
             endDate = endDate,
-            status = TripStatus.DRAFT
+            status = TripStatus.DRAFT,
+            visibility = visibility
         )
     )
 
@@ -305,6 +307,11 @@ class TripRepository(private val client: SupabaseClient) {
     ) {
         postgrest.from("trips")
             .update(TripBasicsRow(title, destination, startDate, endDate)) { filter { eq("id", tripId) } }
+    }
+
+    suspend fun updateTripVisibility(tripId: String, visibility: TripVisibility) {
+        postgrest.from("trips")
+            .update(TripVisibilityRow(visibility)) { filter { eq("id", tripId) } }
     }
 
     suspend fun updateTripTitle(tripId: String, title: String) {
@@ -718,6 +725,9 @@ private data class NewStopPhotoRow(
 
 @Serializable
 private data class TripTitleRow(val title: String)
+
+@Serializable
+private data class TripVisibilityRow(val visibility: TripVisibility)
 
 @Serializable
 private data class TripBasicsRow(

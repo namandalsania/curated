@@ -38,10 +38,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.tooling.preview.Preview
 import com.curated.app.core.format.shortDayText
+import com.curated.app.core.model.TripVisibility
 import com.curated.app.designsystem.CuratedTheme
 import com.curated.app.designsystem.Spacing
 import com.curated.app.designsystem.components.PrimaryButton
 import com.curated.app.designsystem.components.SecondaryButton
+import com.curated.app.features.trip.TripVisibilityPicker
 import kotlinx.datetime.Instant
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
@@ -70,6 +72,7 @@ fun ImportReviewScreen(
     var startDate by remember { mutableStateOf<LocalDate?>(null) }
     var endDate by remember { mutableStateOf<LocalDate?>(null) }
     var picking by remember { mutableStateOf<DateField?>(null) }
+    var visibility by remember { mutableStateOf(TripVisibility.PUBLIC) }
 
     LaunchedEffect(review) {
         if (review != null) {
@@ -92,6 +95,7 @@ fun ImportReviewScreen(
         title = title,
         startDate = startDate,
         endDate = endDate,
+        visibility = visibility,
         onDestinationChange = { destination = it },
         onTitleChange = {
             title = it
@@ -99,11 +103,12 @@ fun ImportReviewScreen(
         },
         onPickStart = { picking = DateField.START },
         onPickEnd = { picking = DateField.END },
+        onVisibilityChange = { visibility = it },
         onCreate = {
             val start = startDate
             val end = endDate
             if (start != null && end != null) {
-                viewModel.createImportedTrip(title.trim(), destination.trim(), start, end, onCreated)
+                viewModel.createImportedTrip(title.trim(), destination.trim(), start, end, visibility, onCreated)
             }
         },
         onBack = onBack
@@ -143,10 +148,12 @@ private fun ImportReviewContent(
     title: String,
     startDate: LocalDate?,
     endDate: LocalDate?,
+    visibility: TripVisibility,
     onDestinationChange: (String) -> Unit,
     onTitleChange: (String) -> Unit,
     onPickStart: () -> Unit,
     onPickEnd: () -> Unit,
+    onVisibilityChange: (TripVisibility) -> Unit,
     onCreate: () -> Unit,
     onBack: () -> Unit
 ) {
@@ -253,6 +260,12 @@ private fun ImportReviewContent(
                     color = MaterialTheme.colorScheme.error
                 )
             }
+            TripVisibilityPicker(
+                selected = visibility,
+                onSelect = onVisibilityChange,
+                enabled = !isSaving,
+                modifier = Modifier.padding(top = Spacing.xs, bottom = Spacing.md)
+            )
             error?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
@@ -301,10 +314,12 @@ private fun ImportReviewPreview() {
             title = "Lisbon · September 2026",
             startDate = LocalDate(2026, 9, 12),
             endDate = LocalDate(2026, 9, 16),
+            visibility = TripVisibility.PUBLIC,
             onDestinationChange = {},
             onTitleChange = {},
             onPickStart = {},
             onPickEnd = {},
+            onVisibilityChange = {},
             onCreate = {},
             onBack = {}
         )

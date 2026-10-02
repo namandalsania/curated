@@ -23,9 +23,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import com.curated.app.core.format.formatDateRange
+import com.curated.app.core.model.TripVisibility
 import com.curated.app.designsystem.Spacing
 import com.curated.app.designsystem.components.HairlineCard
 import com.curated.app.designsystem.components.PrimaryButton
+import com.curated.app.features.trip.TripVisibilityPicker
 
 @Composable
 fun PublishScreen(
@@ -49,7 +51,7 @@ fun PublishScreen(
                     Column {
                         Text("Publish")
                         Text(
-                            "Last look before it goes public",
+                            "Last look before it goes up",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -104,8 +106,21 @@ fun PublishScreen(
                 }
             }
 
+            TripVisibilityPicker(
+                selected = state.visibility,
+                onSelect = viewModel::setVisibility,
+                enabled = !state.isPublishing
+            )
+
             Text(
-                "Publishing puts this on your profile and in the feeds of people who follow you. You can keep editing it as a draft until then.",
+                when (state.visibility) {
+                    TripVisibility.PUBLIC ->
+                        "Publishing puts this on your profile and in the feeds of people who follow you."
+                    TripVisibility.UNLISTED ->
+                        "Publishing makes it open to anyone you send the link to. It won't show on your profile or in feeds."
+                    TripVisibility.PRIVATE ->
+                        "Publishing finishes it for you alone. Nobody else can open it."
+                } + " You can keep editing it as a draft until then.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

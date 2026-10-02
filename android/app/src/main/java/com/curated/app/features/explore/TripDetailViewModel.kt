@@ -15,6 +15,7 @@ import com.curated.app.core.data.TripDaySection
 import com.curated.app.core.data.TripRepository
 import com.curated.app.core.geocode.GeocodingService
 import com.curated.app.core.model.Trip
+import com.curated.app.core.model.TripVisibility
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -23,6 +24,8 @@ import kotlinx.coroutines.launch
 data class TripDetailUiState(
     val isLoading: Boolean = true,
     val trip: Trip? = null,
+    /** The viewer wrote this trip, so its visibility is theirs to see and change. */
+    val isOwner: Boolean = false,
     val days: List<TripDaySection> = emptyList(),
     val error: String? = null,
     /** Stops on this trip the viewer has saved to their places. */
@@ -51,7 +54,8 @@ class TripDetailViewModel(
             _state.update { it.copy(isLoading = true, error = null) }
             try {
                 val detail = tripRepository.fetchTripDetail(tripId)
-                _state.update { it.copy(isLoading = false, trip = detail.trip, days = detail.days) }
+                val isOwner = detail.trip.authorId == authRepository.currentUserId()
+                _state.update { it.copy(isLoading = false, trip = detail.trip, days = detail.days, isOwner = isOwner) }
             } catch (e: Exception) {
                 _state.update { it.copy(isLoading = false, error = e.message ?: "Failed to load trip") }
                 return@launch
@@ -114,6 +118,27 @@ class TripDetailViewModel(
                 Log.w(TAG, "Couldn't unsave stop $stopId", e)
                 _state.update {
                     it.copy(savedStopIds = it.savedStopIds + stopId, snackbar = TripDetailSnackbar("Couldn't remove that place. Try again."))
+                }
+            }
+        }
+    }
+
+    /** Owner only. Shown straight away, and put back if the save fails. */
+    fun setVisibility(visibility: TripVisibility) {
+        val trip = _state.value.trip ?: return
+        if (!_state.value.isOwner || trip.visibility == visibility) return
+        val previous = trip.visibility
+        _state.update { it.copy(trip = trip.copy(visibility = visibility)) }
+        viewModelScope.launch {
+            try {
+                tripRepository.updateTripVisibility(trip.id, visibility)
+            } catch (e: Exception) {
+                Log.w(TAG, "Couldn't change visibility of ${trip.id}", e)
+                _state.update {
+                    it.copy(
+                        trip = it.trip?.copy(visibility = previous),
+                        snackbar = TripDetailSnackbar("Couldn't change who can see this trip. Try again.")
+                    )
                 }
             }
         }

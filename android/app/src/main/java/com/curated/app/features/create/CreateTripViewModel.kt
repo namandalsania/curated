@@ -21,6 +21,7 @@ import com.curated.app.core.geocode.GeocodingService
 import com.curated.app.core.model.Day
 import com.curated.app.core.model.StopCategory
 import com.curated.app.core.model.Trip
+import com.curated.app.core.model.TripVisibility
 import com.curated.app.core.photo.PhotoExifData
 import com.curated.app.core.photo.PhotoExifReader
 import kotlinx.coroutines.Dispatchers
@@ -45,6 +46,8 @@ data class CreateWizardState(
     val destination: String = "",
     val startDate: LocalDate? = null,
     val endDate: LocalDate? = null,
+    /** New trips start public, as they always have. */
+    val visibility: TripVisibility = TripVisibility.PUBLIC,
     val isLoading: Boolean = false,
     val isSaving: Boolean = false,
     val isImportingPhotos: Boolean = false,
@@ -159,6 +162,7 @@ class CreateTripViewModel(
                         destination = detail.trip.destination,
                         startDate = detail.trip.startDate,
                         endDate = detail.trip.endDate,
+                        visibility = detail.trip.visibility,
                         days = detail.days
                     )
                 }
@@ -282,15 +286,30 @@ class CreateTripViewModel(
      * Creates the draft from the review screen, then writes the stops
      * [analyzePhotos] found - each on the day its photos were taken.
      */
-    fun createImportedTrip(title: String, destination: String, startDate: LocalDate, endDate: LocalDate, onReady: () -> Unit) {
+    fun createImportedTrip(
+        title: String,
+        destination: String,
+        startDate: LocalDate,
+        endDate: LocalDate,
+        visibility: TripVisibility,
+        onReady: () -> Unit
+    ) {
         val authorId = authRepository.currentUserId() ?: return
         val review = _state.value.importReview ?: return
         _state.update {
-            it.copy(title = title, destination = destination, startDate = startDate, endDate = endDate, isSaving = true, error = null)
+            it.copy(
+                title = title,
+                destination = destination,
+                startDate = startDate,
+                endDate = endDate,
+                visibility = visibility,
+                isSaving = true,
+                error = null
+            )
         }
         viewModelScope.launch {
             try {
-                val trip = tripRepository.createDraftTrip(authorId, title, destination, startDate, endDate)
+                val trip = tripRepository.createDraftTrip(authorId, title, destination, startDate, endDate, visibility)
                 _state.update { it.copy(tripId = trip.id) }
                 val stopsAdded = addClusteredStops(trip.id, pendingStops) { photos -> dayIndexFor(photos) }
                 pendingStops = emptyList()
@@ -400,6 +419,7 @@ class CreateTripViewModel(
                         destination = trip.destination,
                         startDate = trip.startDate,
                         endDate = trip.endDate,
+                        visibility = trip.visibility,
                         isLive = true,
                         liveDayCount = LiveTripRules.dayCount(trip.startDate, today(), emptyList(), emptyList())
                     )
@@ -410,6 +430,14 @@ class CreateTripViewModel(
                 _state.update { it.copy(isSaving = false, error = "Couldn't start this trip. Try again.") }
             }
         }
+    }
+
+    /** Changes who can see the trip; before the trip exists it's only remembered. */
+    fun setVisibility(visibility: TripVisibility) {
+        if (visibility == _state.value.visibility) return
+        _state.update { it.copy(visibility = visibility) }
+        val tripId = _state.value.tripId ?: return
+        write { tripRepository.updateTripVisibility(tripId, visibility) }
     }
 
     /** Renames the trip. A blank title is ignored rather than saved. */
@@ -439,6 +467,7 @@ class CreateTripViewModel(
                         destination = detail.trip.destination,
                         startDate = detail.trip.startDate,
                         endDate = detail.trip.endDate,
+                        visibility = detail.trip.visibility,
                         days = detail.days,
                         liveDays = days,
                         liveDayCount = LiveTripRules.dayCount(detail.trip.startDate, today(), days, detail.days)
@@ -496,7 +525,7 @@ class CreateTripViewModel(
                     tripRepository.endTrip(tripId, LiveTripRules.endDate(start, _state.value.days))
                 }
                 // Same as publishing a finished trip: followers hear about the completed trip once.
-                runCatching {
+                if (trip.visibility == TripVisibility.PUBLIC) runCatching {
                     val followerIds = socialRepository.fetchFollowerIds(authorId)
                     notificationRepository.notifyNewTrip(actorId = authorId, tripId = trip.id, followerIds = followerIds)
                 }
@@ -617,7 +646,9 @@ class CreateTripViewModel(
             _state.update { it.copy(isPublishing = true, error = null) }
             try {
                 val trip = tripRepository.publishDraft(tripId, photoStorageRepository)
-                runCatching {
+                // An unlisted or private trip isn't announced: the notification
+                // would point followers at something they can't find or open.
+                if (trip.visibility == TripVisibility.PUBLIC) runCatching {
                     val followerIds = socialRepository.fetchFollowerIds(authorId)
                     notificationRepository.notifyNewTrip(actorId = authorId, tripId = trip.id, followerIds = followerIds)
                 }

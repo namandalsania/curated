@@ -30,9 +30,11 @@ import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -66,11 +68,16 @@ import com.curated.app.core.format.formatDateRange
 import com.curated.app.core.format.label
 import com.curated.app.core.format.shortDayText
 import com.curated.app.core.model.Trip
+import com.curated.app.core.model.TripVisibility
 import com.curated.app.designsystem.CuratedCornerRadius
 import com.curated.app.designsystem.Spacing
 import com.curated.app.designsystem.components.ErrorState
 import com.curated.app.designsystem.components.SkeletonBox
+import com.curated.app.designsystem.components.Tag
 import com.curated.app.designsystem.components.TripCardSkeleton
+import com.curated.app.features.trip.TripVisibilityPicker
+import com.curated.app.features.trip.explanation
+import com.curated.app.features.trip.label
 
 @Composable
 fun TripDetailScreen(
@@ -85,6 +92,7 @@ fun TripDetailScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     var openComments by remember { mutableStateOf<StopWithPhotos?>(null) }
     var showShare by remember { mutableStateOf(false) }
+    var showVisibility by remember { mutableStateOf(false) }
 
     LaunchedEffect(tripId) { viewModel.load(tripId) }
 
@@ -116,6 +124,16 @@ fun TripDetailScreen(
     }
     if (showShare && trip != null) {
         ShareTripSheet(tripId = trip.id, onDismiss = { showShare = false })
+    }
+    if (showVisibility && trip != null && state.isOwner) {
+        VisibilitySheet(
+            selected = trip.visibility,
+            onSelect = { visibility ->
+                viewModel.setVisibility(visibility)
+                showVisibility = false
+            },
+            onDismiss = { showVisibility = false }
+        )
     }
 
     Scaffold(
@@ -164,7 +182,13 @@ fun TripDetailScreen(
                     contentPadding = PaddingValues(start = Spacing.md, end = Spacing.md, bottom = Spacing.xl)
                 ) {
                     item(key = "header") {
-                        TripHeader(trip = trip, dayCount = state.days.size, onAuthorClick = onAuthorClick)
+                        TripHeader(
+                            trip = trip,
+                            dayCount = state.days.size,
+                            isOwner = state.isOwner,
+                            onAuthorClick = onAuthorClick,
+                            onVisibilityClick = { showVisibility = true }
+                        )
                     }
                     state.days.forEach { day ->
                         item(key = "day-${day.dayIndex}") { DayHeader(day) }
@@ -187,7 +211,13 @@ fun TripDetailScreen(
 }
 
 @Composable
-private fun TripHeader(trip: Trip, dayCount: Int, onAuthorClick: (String) -> Unit) {
+private fun TripHeader(
+    trip: Trip,
+    dayCount: Int,
+    isOwner: Boolean,
+    onAuthorClick: (String) -> Unit,
+    onVisibilityClick: () -> Unit
+) {
     Column(modifier = Modifier.padding(top = Spacing.sm, bottom = Spacing.sm)) {
         Text(
             trip.destination,
@@ -210,6 +240,10 @@ private fun TripHeader(trip: Trip, dayCount: Int, onAuthorClick: (String) -> Uni
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = Spacing.xs)
         )
+
+        // Everyone else can only ever see a trip they're allowed to, so the
+        // setting is only news to its owner.
+        if (isOwner) VisibilityLabel(trip.visibility, onClick = onVisibilityClick)
 
         trip.author?.let { author ->
             Row(
@@ -250,6 +284,40 @@ private fun TripHeader(trip: Trip, dayCount: Int, onAuthorClick: (String) -> Uni
                 }
             }
         }
+    }
+}
+
+/** "Unlisted · Only people with the link. Change" - the owner's view of who can see this. */
+@Composable
+private fun VisibilityLabel(visibility: TripVisibility, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .padding(top = Spacing.sm)
+            .clip(RoundedCornerShape(CuratedCornerRadius))
+            .clickable(onClickLabel = "Change who can see this trip", onClick = onClick)
+            .padding(vertical = Spacing.xs),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
+    ) {
+        Tag(visibility.label())
+        Text(
+            visibility.explanation(),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text("Change", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun VisibilitySheet(selected: TripVisibility, onSelect: (TripVisibility) -> Unit, onDismiss: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        TripVisibilityPicker(
+            selected = selected,
+            onSelect = onSelect,
+            modifier = Modifier.padding(start = Spacing.md, end = Spacing.md, bottom = Spacing.xl)
+        )
     }
 }
 

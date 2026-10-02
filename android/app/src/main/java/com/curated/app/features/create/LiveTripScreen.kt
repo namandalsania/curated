@@ -48,6 +48,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.curated.app.core.data.StopWithPhotos
 import com.curated.app.core.format.shortDayText
+import com.curated.app.core.model.TripVisibility
 import com.curated.app.designsystem.CuratedCornerRadius
 import com.curated.app.designsystem.CuratedTheme
 import com.curated.app.designsystem.Spacing
@@ -57,6 +58,7 @@ import com.curated.app.designsystem.components.PrimaryButton
 import com.curated.app.designsystem.components.SecondaryButton
 import com.curated.app.designsystem.components.Tag
 import com.curated.app.designsystem.components.TagStyle
+import com.curated.app.features.trip.TripVisibilityPicker
 
 /**
  * A trip in progress: one card per day so far, each posted or not, and the way
@@ -73,7 +75,7 @@ fun LiveTripScreen(
     val state by viewModel.state.collectAsState()
     var editing by remember { mutableStateOf<StopWithPhotos?>(null) }
     var showEndSheet by remember { mutableStateOf(false) }
-    var renaming by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.endedTrip) {
         state.endedTrip?.let { trip ->
@@ -121,21 +123,23 @@ fun LiveTripScreen(
         )
     }
 
-    if (renaming) {
-        RenameTripDialog(
-            current = state.title,
-            onRename = { title ->
+    if (showSettings) {
+        TripSettingsDialog(
+            currentTitle = state.title,
+            currentVisibility = state.visibility,
+            onSave = { title, visibility ->
                 viewModel.renameTrip(title)
-                renaming = false
+                viewModel.setVisibility(visibility)
+                showSettings = false
             },
-            onDismiss = { renaming = false }
+            onDismiss = { showSettings = false }
         )
     }
 
     LiveTripContent(
         state = state,
         onBack = onBack,
-        onRename = { renaming = true },
+        onOpenSettings = { showSettings = true },
         onOpenDay = onOpenDay,
         onEditUnassigned = { editing = it },
         onEndTrip = { showEndSheet = true }
@@ -147,7 +151,7 @@ fun LiveTripScreen(
 private fun LiveTripContent(
     state: CreateWizardState,
     onBack: () -> Unit,
-    onRename: () -> Unit,
+    onOpenSettings: () -> Unit,
     onOpenDay: (Int) -> Unit,
     onEditUnassigned: (StopWithPhotos) -> Unit,
     onEndTrip: () -> Unit
@@ -171,9 +175,10 @@ private fun LiveTripContent(
                     }
                 },
                 actions = {
-                    // The title was made up when the trip started; this is where it gets changed.
-                    IconButton(onClick = onRename) {
-                        Icon(Icons.Outlined.Edit, contentDescription = "Rename trip")
+                    // The title was made up when the trip started and it went up as
+                    // public; this is where either gets changed.
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(Icons.Outlined.Edit, contentDescription = "Trip settings")
                     }
                     Tag("LIVE", style = TagStyle.Accent, modifier = Modifier.padding(end = Spacing.md))
                 }
@@ -236,22 +241,32 @@ private fun LiveTripContent(
 }
 
 @Composable
-private fun RenameTripDialog(current: String, onRename: (String) -> Unit, onDismiss: () -> Unit) {
-    var title by remember { mutableStateOf(current) }
+private fun TripSettingsDialog(
+    currentTitle: String,
+    currentVisibility: TripVisibility,
+    onSave: (String, TripVisibility) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var title by remember { mutableStateOf(currentTitle) }
+    var visibility by remember { mutableStateOf(currentVisibility) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Rename trip") },
+        title = { Text("Trip settings") },
         text = {
-            OutlinedTextField(
-                value = title,
-                onValueChange = { title = it },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-                modifier = Modifier.fillMaxWidth()
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("Title") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                TripVisibilityPicker(selected = visibility, onSelect = { visibility = it })
+            }
         },
         confirmButton = {
-            TextButton(onClick = { onRename(title) }, enabled = title.isNotBlank()) { Text("Save") }
+            TextButton(onClick = { onSave(title, visibility) }, enabled = title.isNotBlank()) { Text("Save") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
