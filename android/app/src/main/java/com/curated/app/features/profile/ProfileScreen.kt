@@ -59,6 +59,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
+import com.curated.app.BuildConfig
 import com.curated.app.core.format.formatDateRange
 import com.curated.app.core.format.monthYearText
 import com.curated.app.core.format.shortDayText
@@ -123,6 +124,15 @@ fun ProfileScreen(
                                         onEditProfile()
                                     }
                                 )
+                                if (BuildConfig.CRASH_TEST_ENABLED) {
+                                    DropdownMenuItem(
+                                        text = { Text("Test crash (debug)") },
+                                        onClick = {
+                                            // Uncaught on purpose: Crashlytics reports it on the next launch.
+                                            throw RuntimeException("Test crash from the Profile menu")
+                                        }
+                                    )
+                                }
                                 DropdownMenuItem(
                                     text = { Text("Sign out") },
                                     leadingIcon = { Icon(Icons.AutoMirrored.Outlined.Logout, contentDescription = null) },

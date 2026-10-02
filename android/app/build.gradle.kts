@@ -9,6 +9,17 @@ plugins {
     alias(libs.plugins.compose.compiler)
 }
 
+// Firebase (Crashlytics) needs app/google-services.json from the Firebase
+// console. The google-services plugin fails the build without it, so both
+// plugins wait for the file: until it's there the app builds and runs as
+// before, with crash reporting simply off.
+if (file("google-services.json").exists()) {
+    apply(plugin = libs.plugins.google.services.get().pluginId)
+    apply(plugin = libs.plugins.firebase.crashlytics.get().pluginId)
+} else {
+    logger.warn("app/google-services.json is missing - building without Firebase Crashlytics.")
+}
+
 // Local secrets: local.properties (gitignored, real values) falls back to
 // local.defaults.properties (checked in, placeholders) for any missing key.
 val localProperties = Properties().apply {
@@ -38,6 +49,17 @@ android {
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"${secret("SUPABASE_ANON_KEY")}\"")
     }
 
+    buildTypes {
+        // A Profile menu item that crashes the app on purpose, to check reports
+        // reach Crashlytics. Debug builds only; remove once confirmed.
+        debug {
+            buildConfigField("boolean", "CRASH_TEST_ENABLED", "true")
+        }
+        release {
+            buildConfigField("boolean", "CRASH_TEST_ENABLED", "false")
+        }
+    }
+
     buildFeatures {
         compose = true
         buildConfig = true
@@ -57,6 +79,8 @@ kotlin {
 }
 
 dependencies {
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.crashlytics)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.navigation.compose)
