@@ -3,6 +3,8 @@
 local.properties
 *.jks
 *.keystore
+# Firebase config - download from the Firebase console, don't commit.
+android/app/google-services.json
 
 # Build output
 build/
