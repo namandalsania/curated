@@ -1,5 +1,6 @@
 package com.curated.app.features.explore
 
+import com.curated.app.core.data.TripSearchParams
 import com.curated.app.core.model.BudgetTag
 import com.curated.app.core.model.SeasonTag
 import com.curated.app.core.model.Trip
@@ -29,6 +30,25 @@ data class ExploreFilters(
             followScope != FollowScope.EVERYONE
         ).count { it }
 }
+
+/**
+ * What the trips query asks for. Budget, season, the search text and the
+ * Following scope narrow it in the database; trip length isn't a column, so
+ * [keeps] applies it to what comes back.
+ */
+fun ExploreFilters.toSearchParams(query: String, authorIds: List<String>?): TripSearchParams =
+    TripSearchParams(
+        query = query.trim().ifBlank { null },
+        budgetTag = budgetTag,
+        seasonTag = seasonTag,
+        authorIds = authorIds
+    )
+
+/** Whether a trip the query returned passes the filters applied after it - trip length. */
+fun ExploreFilters.keeps(trip: Trip): Boolean = tripLength == null || trip.tripLength() == tripLength
+
+/** Identifies a result set: the same text and filters give the same key. */
+fun ExploreFilters.resultsKey(query: String): String = "${query.trim()}|$tripLength|$budgetTag|$seasonTag|$followScope"
 
 fun Trip.lengthInDays(): Int =
     (endDate.toEpochDays() - startDate.toEpochDays() + 1).toInt().coerceAtLeast(1)

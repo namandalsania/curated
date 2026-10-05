@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,6 +62,10 @@ fun ExploreSheetContent(
     inView: List<FeedItem>,
     all: List<FeedItem>,
     isLoading: Boolean,
+    hasFilters: Boolean,
+    query: String,
+    onClearFilters: () -> Unit,
+    onClearSearch: () -> Unit,
     selectedTripId: String?,
     rowState: LazyListState,
     onTripClick: (String) -> Unit,
@@ -73,6 +78,12 @@ fun ExploreSheetContent(
         contentPadding = PaddingValues(bottom = Spacing.xl),
         verticalArrangement = Arrangement.spacedBy(Spacing.md)
     ) {
+        if (all.isEmpty() && !isLoading) {
+            item(key = "empty") {
+                NoMatches(hasFilters, query, onClearFilters, onClearSearch)
+            }
+            return@LazyColumn
+        }
         item(key = "header") {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.md),
@@ -96,8 +107,7 @@ fun ExploreSheetContent(
         item(key = "row") {
             if (inView.isEmpty()) {
                 Text(
-                    if (all.isEmpty()) "Try widening your filters or searching a different destination."
-                    else "Move the map to see trips somewhere else.",
+                    "Move the map to see trips somewhere else.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = Spacing.md).height(SheetCardWidth)
@@ -136,6 +146,29 @@ fun ExploreSheetContent(
                     onSaveToggle = { onSaveToggle(item.trip.id) }
                 )
             }
+        }
+    }
+}
+
+/** Nothing matches: say why, quietly, and offer the one way back. */
+@Composable
+private fun NoMatches(hasFilters: Boolean, query: String, onClearFilters: () -> Unit, onClearSearch: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.md),
+        verticalArrangement = Arrangement.spacedBy(Spacing.xs)
+    ) {
+        Text(
+            when {
+                hasFilters -> "No trips match these filters"
+                query.isNotBlank() -> "No trips match \u201c${query.trim()}\u201d"
+                else -> "No trips yet"
+            },
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        when {
+            hasFilters -> TextButton(onClick = onClearFilters, contentPadding = PaddingValues(0.dp)) { Text("Clear filters") }
+            query.isNotBlank() -> TextButton(onClick = onClearSearch, contentPadding = PaddingValues(0.dp)) { Text("Clear search") }
         }
     }
 }

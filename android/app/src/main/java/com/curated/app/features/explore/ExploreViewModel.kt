@@ -14,7 +14,6 @@ import com.curated.app.core.data.SupabaseProvider
 import com.curated.app.core.data.TripCompleteness
 import com.curated.app.core.data.TripMapPin
 import com.curated.app.core.data.TripRepository
-import com.curated.app.core.data.TripSearchParams
 import com.curated.app.core.model.BudgetTag
 import com.curated.app.core.model.SeasonTag
 import com.curated.app.core.model.Trip
@@ -39,6 +38,11 @@ data class ExploreUiState(
     val filters: ExploreFilters = ExploreFilters(),
     /** One pin per trip (its first stop), in the same order as [listItems]. */
     val tripPins: List<TripMapPin> = emptyList(),
+    /**
+     * The search text and filters [tripPins] were loaded for (see [resultsKey]).
+     * The map refits when this changes, not on a reload of the same results.
+     */
+    val pinsKey: String? = null,
     val listItems: List<FeedItem> = emptyList(),
     val destinationSuggestions: List<String> = emptyList(),
     val error: String? = null
@@ -82,6 +86,7 @@ class ExploreViewModel(
     fun setBudgetTag(tag: BudgetTag?) = updateFilters { it.copy(budgetTag = tag) }
     fun setSeasonTag(tag: SeasonTag?) = updateFilters { it.copy(seasonTag = tag) }
     fun setFollowScope(scope: FollowScope) = updateFilters { it.copy(followScope = scope) }
+    fun clearFilters() = updateFilters { ExploreFilters() }
 
     private fun updateFilters(transform: (ExploreFilters) -> ExploreFilters) {
         val updated = transform(_state.value.filters)
@@ -101,6 +106,7 @@ class ExploreViewModel(
             val myId = authRepository.currentUserId()
             val filters = _state.value.filters
             val query = _state.value.searchQuery.trim()
+            val key = filters.resultsKey(query)
 
             val authorIds = if (filters.followScope == FollowScope.FOLLOWING) {
                 myId?.let { socialRepository.fetchFollowingIds(it) } ?: emptyList()
@@ -114,6 +120,7 @@ class ExploreViewModel(
                         isLoading = false,
                         isMapLoading = false,
                         tripPins = emptyList(),
+                        pinsKey = key,
                         listItems = emptyList(),
                         destinationSuggestions = emptyList()
                     )
@@ -121,18 +128,8 @@ class ExploreViewModel(
                 return
             }
 
-            val candidates = tripRepository.searchTrips(
-                TripSearchParams(
-                    query = query.ifBlank { null },
-                    budgetTag = filters.budgetTag,
-                    seasonTag = filters.seasonTag,
-                    authorIds = authorIds
-                )
-            )
-
-            val lengthFiltered = filters.tripLength?.let { length ->
-                candidates.filter { it.tripLength() == length }
-            } ?: candidates
+            val candidates = tripRepository.searchTrips(filters.toSearchParams(query, authorIds))
+            val lengthFiltered = candidates.filter { filters.keeps(it) }
 
             val suggestions = if (query.isNotBlank()) {
                 lengthFiltered.map { it.destination }.distinct().take(MAX_SUGGESTIONS)
@@ -173,7 +170,7 @@ class ExploreViewModel(
             }
 
             val tripPins = tripRepository.fetchTripMapPinsFor(ranked)
-            _state.update { it.copy(isMapLoading = false, tripPins = tripPins) }
+            _state.update { it.copy(isMapLoading = false, tripPins = tripPins, pinsKey = key) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

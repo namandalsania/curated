@@ -7,8 +7,9 @@ package com.curated.app.features.explore
  * zoom all the way in. Null when there's nothing to fit, which keeps the
  * default world view.
  *
- * Google Maps won't zoom out past level 2, which on a phone shows about 145
- * degrees of longitude - roughly [MAX_SPAN] once the fit's margins are taken off. Pins spread wider than that (Mexico City to
+ * Google Maps won't zoom out past level 3 on this map (measured on a Pixel-size
+ * screen), which shows about 72 degrees of longitude - roughly [MAX_SPAN] once
+ * the fit's margins are taken off. Pins spread wider than that (Mexico City to
  * Tokyo) can't all fit, and centering on their middle can land on an ocean or
  * a continent with none of them. So the camera fits the most pins that do fit
  * side by side instead.
@@ -25,7 +26,7 @@ sealed interface MapFit {
         private const val SAME_SPOT = 0.0001
 
         /** Widest spread of longitudes a phone-sized map can fit, margins included, at its furthest zoom. */
-        const val MAX_SPAN = 90.0
+        const val MAX_SPAN = 45.0
 
         fun of(points: List<Pair<Double, Double>>): MapFit? {
             if (points.isEmpty()) return null

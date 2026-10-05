@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.UiComposable
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.google.android.gms.maps.CameraUpdateFactory
@@ -46,7 +47,8 @@ fun ClusteredMap(
     contentPadding: PaddingValues = PaddingValues(),
     onMapLoaded: () -> Unit = {},
     onPinClick: (MapPin) -> Unit = {},
-    pinContent: (@Composable (MapPin) -> Unit)? = null
+    /** Drawn as ordinary UI, then turned into the marker's bitmap by the clustering library. */
+    pinContent: (@Composable @UiComposable (MapPin) -> Unit)? = null
 ) {
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current

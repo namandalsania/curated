@@ -89,6 +89,7 @@ fun ExploreScreen(
     val state by viewModel.state.collectAsState()
     val focusManager = LocalFocusManager.current
     var showSearch by remember { mutableStateOf(false) }
+    var openPicker by remember { mutableStateOf<PickerFilter?>(null) }
 
     LaunchedEffect(Unit) { viewModel.refresh() }
 
@@ -125,6 +126,8 @@ fun ExploreScreen(
                 )
                 state.viewMode == ExploreViewMode.MAP -> ExploreMap(
                     state = state,
+                    onClearFilters = viewModel::clearFilters,
+                    onClearSearch = { viewModel.setSearchQuery("") },
                     onTripClick = onTripClick,
                     onAuthorClick = onAuthorClick,
                     onLikeToggle = viewModel::toggleLike,
@@ -161,15 +164,41 @@ fun ExploreScreen(
                 }
             }
 
-            SearchPill(
-                query = state.searchQuery,
-                activeFilterCount = state.filters.activeCount,
-                onClick = { showSearch = true },
+            Column(
                 modifier = Modifier
                     .align(if (state.viewMode == ExploreViewMode.MAP) Alignment.TopCenter else Alignment.BottomCenter)
-                    .padding(horizontal = Spacing.lg, vertical = Spacing.md)
-            )
+                    .padding(vertical = Spacing.md),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(Spacing.sm)
+            ) {
+                SearchPill(
+                    query = state.searchQuery,
+                    onClick = { showSearch = true },
+                    modifier = Modifier.padding(horizontal = Spacing.lg)
+                )
+                ExploreFilterChipRow(
+                    filters = state.filters,
+                    onToggleFollowing = {
+                        viewModel.setFollowScope(
+                            if (state.filters.followScope == FollowScope.FOLLOWING) FollowScope.EVERYONE else FollowScope.FOLLOWING
+                        )
+                    },
+                    onOpenPicker = { openPicker = it },
+                    onClearAll = viewModel::clearFilters
+                )
+            }
         }
+    }
+
+    openPicker?.let { filter ->
+        FilterPickerSheet(
+            filter = filter,
+            filters = state.filters,
+            onSelectDuration = viewModel::setTripLength,
+            onSelectBudget = viewModel::setBudgetTag,
+            onSelectSeason = viewModel::setSeasonTag,
+            onDismiss = { openPicker = null }
+        )
     }
 
     if (showSearch) {
@@ -202,19 +231,12 @@ private val SearchPillClearance = 88.dp
 @Composable
 private fun SearchPill(
     query: String,
-    activeFilterCount: Int,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val label = when {
-        query.isNotBlank() && activeFilterCount > 0 ->
-            "$query - $activeFilterCount ${if (activeFilterCount == 1) "filter" else "filters"}"
-        query.isNotBlank() -> query
-        activeFilterCount > 0 ->
-            "$activeFilterCount ${if (activeFilterCount == 1) "filter" else "filters"}"
-        else -> "Search destinations or trips"
-    }
-    val isPlaceholder = query.isBlank() && activeFilterCount == 0
+    // The filters show as chips under the pill, so it only carries the search.
+    val label = query.ifBlank { "Search destinations or trips" }
+    val isPlaceholder = query.isBlank()
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(percent = 50),
@@ -244,7 +266,7 @@ private fun SearchPill(
     }
 }
 
-/** Search, destination shortcuts and every filter, opened from the pill. */
+/** Search and destination shortcuts, opened from the pill. */
 @Composable
 private fun SearchSheet(
     state: ExploreUiState,
@@ -294,100 +316,9 @@ private fun SearchSheet(
             }
         }
 
-        ExploreFilterBar(
-            filters = state.filters,
-            onTripLengthChange = viewModel::setTripLength,
-            onBudgetTagChange = viewModel::setBudgetTag,
-            onSeasonTagChange = viewModel::setSeasonTag,
-            onFollowScopeChange = viewModel::setFollowScope
-        )
     }
 }
 
-/**
- * Every filter in one horizontally scrolling row. Four stacked rows used to eat
- * ~200dp, which (with the search field, suggestions, and keyboard) left the
- * results area almost no height on a phone.
- */
-@Composable
-private fun ExploreFilterBar(
-    filters: ExploreFilters,
-    onTripLengthChange: (TripLength?) -> Unit,
-    onBudgetTagChange: (BudgetTag?) -> Unit,
-    onSeasonTagChange: (SeasonTag?) -> Unit,
-    onFollowScopeChange: (FollowScope) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = Spacing.md)
-            .padding(bottom = Spacing.sm),
-        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        CuratedFilterChip(
-            selected = filters.followScope == FollowScope.FOLLOWING,
-            onClick = {
-                onFollowScopeChange(
-                    if (filters.followScope == FollowScope.FOLLOWING) FollowScope.EVERYONE else FollowScope.FOLLOWING
-                )
-            },
-            label = "Following only"
-        )
-        FilterDivider()
-        TripLength.entries.forEach { length ->
-            CuratedFilterChip(
-                selected = filters.tripLength == length,
-                onClick = { onTripLengthChange(if (filters.tripLength == length) null else length) },
-                label = length.label()
-            )
-        }
-        FilterDivider()
-        BudgetTag.entries.forEach { tag ->
-            CuratedFilterChip(
-                selected = filters.budgetTag == tag,
-                onClick = { onBudgetTagChange(if (filters.budgetTag == tag) null else tag) },
-                label = tag.label()
-            )
-        }
-        FilterDivider()
-        SeasonTag.entries.forEach { tag ->
-            CuratedFilterChip(
-                selected = filters.seasonTag == tag,
-                onClick = { onSeasonTagChange(if (filters.seasonTag == tag) null else tag) },
-                label = tag.label()
-            )
-        }
-    }
-}
-
-@Composable
-private fun FilterDivider() {
-    VerticalDivider(
-        modifier = Modifier.height(20.dp),
-        color = MaterialTheme.colorScheme.outlineVariant
-    )
-}
-
-private fun TripLength.label() = when (this) {
-    TripLength.SHORT -> "1–3 days"
-    TripLength.MEDIUM -> "4–7 days"
-    TripLength.LONG -> "8+ days"
-}
-
-private fun BudgetTag.label() = when (this) {
-    BudgetTag.BUDGET -> "Budget"
-    BudgetTag.MID_RANGE -> "Mid-range"
-    BudgetTag.LUXURY -> "Luxury"
-}
-
-private fun SeasonTag.label() = when (this) {
-    SeasonTag.SPRING -> "Spring"
-    SeasonTag.SUMMER -> "Summer"
-    SeasonTag.FALL -> "Fall"
-    SeasonTag.WINTER -> "Winter"
-}
 
 /**
  * The map with its sheet. The camera opens fitted to every trip pin, once; the
@@ -397,6 +328,8 @@ private fun SeasonTag.label() = when (this) {
 @Composable
 private fun ExploreMap(
     state: ExploreUiState,
+    onClearFilters: () -> Unit,
+    onClearSearch: () -> Unit,
     onTripClick: (String) -> Unit,
     onAuthorClick: (String) -> Unit,
     onLikeToggle: (String) -> Unit,
@@ -407,8 +340,9 @@ private fun ExploreMap(
     val cameraPositionState = rememberCameraPositionState { position = DEFAULT_WORLD_CAMERA }
     val rowState = rememberLazyListState()
     var mapLoaded by remember { mutableStateOf(false) }
-    // Saved, so coming back to Explore doesn't snap the camera away from where it was left.
-    var fitted by rememberSaveable { mutableStateOf(false) }
+    // The results the camera was last fitted to. Saved, so coming back to Explore
+    // doesn't snap the camera away from where it was left.
+    var fittedKey by rememberSaveable { mutableStateOf<String?>(null) }
     var userMoved by rememberSaveable { mutableStateOf(false) }
     var inViewIds by remember { mutableStateOf<Set<String>?>(null) }
     var selectedTripId by remember { mutableStateOf<String?>(null) }
@@ -421,9 +355,16 @@ private fun ExploreMap(
         }
     }
 
-    // Fit once, after the first pins arrive - never after the user has moved the map.
-    LaunchedEffect(mapLoaded, state.tripPins, state.isMapLoading) {
-        if (!mapLoaded || fitted || userMoved || state.isMapLoading) return@LaunchedEffect
+    // Fit when a new set of results arrives: after the first load (unless the
+    // user has already moved the map), and after each change of search or
+    // filters. A reload of the same results leaves the camera alone, and with
+    // no results there's nothing to fit, so the camera stays where it is.
+    LaunchedEffect(mapLoaded, state.pinsKey, state.isMapLoading) {
+        val key = state.pinsKey
+        if (!mapLoaded || state.isMapLoading || key == null || key == fittedKey) return@LaunchedEffect
+        val firstLoad = fittedKey == null
+        fittedKey = key
+        if (firstLoad && userMoved) return@LaunchedEffect
         val fit = MapFit.of(state.tripPins.map { it.latitude to it.longitude }) ?: return@LaunchedEffect
         val update = when (fit) {
             is MapFit.Point -> CameraUpdateFactory.newLatLngZoom(LatLng(fit.latitude, fit.longitude), MapFit.CITY_ZOOM)
@@ -433,7 +374,6 @@ private fun ExploreMap(
             )
         }
         runCatching { cameraPositionState.animate(update) }
-        fitted = true
     }
 
     // Which trips are in view, each time the camera settles.
@@ -458,6 +398,10 @@ private fun ExploreMap(
                 inView = inView,
                 all = state.listItems,
                 isLoading = state.isLoading || state.isMapLoading,
+                hasFilters = state.filters.activeCount > 0,
+                query = state.searchQuery,
+                onClearFilters = onClearFilters,
+                onClearSearch = onClearSearch,
                 selectedTripId = selectedTripId,
                 rowState = rowState,
                 onTripClick = onTripClick,
