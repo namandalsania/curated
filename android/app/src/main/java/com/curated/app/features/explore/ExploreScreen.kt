@@ -298,6 +298,16 @@ private fun ExploreMap(
     var movedSinceBase by remember { mutableStateOf(false) }
     var offerAreaSearch by remember { mutableStateOf(false) }
     var area by rememberSaveable(stateSaver = MapRegionSaver) { mutableStateOf<MapRegion?>(null) }
+    // A new search is about somewhere else: the area was picked for the old one.
+    // Leaving it lets the camera fit the new results instead of hiding them.
+    var areaQuery by rememberSaveable { mutableStateOf(state.searchQuery.trim()) }
+    LaunchedEffect(state.searchQuery) {
+        val query = state.searchQuery.trim()
+        if (query != areaQuery) {
+            areaQuery = query
+            area = null
+        }
+    }
     var inViewIds by remember { mutableStateOf<Set<String>?>(null) }
     var selectedTripId by remember { mutableStateOf<String?>(null) }
 
