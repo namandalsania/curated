@@ -262,7 +262,7 @@ fun PostDayScreen(
 }
 
 /** The inline reason Post Day was refused, naming the stops at fault. */
-private fun postProblemText(problem: LiveTripRules.PostProblem?): String? = when (problem) {
+internal fun postProblemText(problem: LiveTripRules.PostProblem?): String? = when (problem) {
     null -> null
     LiveTripRules.PostProblem.NoStops -> "Add at least one place before posting this day."
     is LiveTripRules.PostProblem.Unassigned ->

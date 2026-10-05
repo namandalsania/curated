@@ -3,6 +3,8 @@ package com.curated.app.features.create
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,6 +12,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -18,7 +21,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -38,16 +42,22 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
 import com.curated.app.core.data.StopWithPhotos
 import com.curated.app.core.format.shortDayText
+import com.curated.app.core.model.Stop
+import com.curated.app.core.model.StopCategory
 import com.curated.app.core.model.TripVisibility
 import com.curated.app.designsystem.CuratedCornerRadius
 import com.curated.app.designsystem.CuratedTheme
@@ -55,10 +65,15 @@ import com.curated.app.designsystem.Spacing
 import com.curated.app.designsystem.components.HairlineCard
 import com.curated.app.designsystem.components.HairlineDivider
 import com.curated.app.designsystem.components.PrimaryButton
-import com.curated.app.designsystem.components.SecondaryButton
 import com.curated.app.designsystem.components.Tag
 import com.curated.app.designsystem.components.TagStyle
+import com.curated.app.features.trip.StopPreviewRow
 import com.curated.app.features.trip.TripVisibilityPicker
+import com.curated.app.features.trip.stopPreview
+import kotlin.time.Clock
+import kotlin.time.Instant
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.todayIn
 
 /**
  * A trip in progress: one card per day so far, each posted or not, and the way
@@ -76,12 +91,25 @@ fun LiveTripScreen(
     var editing by remember { mutableStateOf<StopWithPhotos?>(null) }
     var showEndSheet by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    // The day whose card asked for photos or a post, so its result shows on that card.
+    var actedOnDay by rememberSaveable { mutableStateOf<Int?>(null) }
 
     LaunchedEffect(state.endedTrip) {
         state.endedTrip?.let { trip ->
             viewModel.reset()
             onEnded(trip.id)
         }
+    }
+
+    // Posting from a card sets justPostedDay, which Post Day closes itself on.
+    // Cleared here, or opening that day later would close it straight away.
+    LaunchedEffect(state.justPostedDay) {
+        if (state.justPostedDay != null) viewModel.consumeJustPosted()
+    }
+
+    // The same import Post Day's "Add photos from this day" runs.
+    val pickDayPhotos = rememberGeoPhotoPicker { uris ->
+        actedOnDay?.let { day -> viewModel.importPhotosForDay(context, uris, day) }
     }
 
     val addPhotos = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(20)) { uris ->
@@ -138,9 +166,20 @@ fun LiveTripScreen(
 
     LiveTripContent(
         state = state,
+        actedOnDay = actedOnDay,
         onBack = onBack,
         onOpenSettings = { showSettings = true },
         onOpenDay = onOpenDay,
+        onPostDay = { day ->
+            actedOnDay = day
+            viewModel.clearPostProblem()
+            viewModel.postDay(day)
+        },
+        onAddPhotos = { day ->
+            actedOnDay = day
+            viewModel.clearPostProblem()
+            pickDayPhotos()
+        },
         onEditUnassigned = { editing = it },
         onEndTrip = { showEndSheet = true }
     )
@@ -150,12 +189,16 @@ fun LiveTripScreen(
 @Composable
 private fun LiveTripContent(
     state: CreateWizardState,
+    actedOnDay: Int?,
     onBack: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenDay: (Int) -> Unit,
+    onPostDay: (Int) -> Unit,
+    onAddPhotos: (Int) -> Unit,
     onEditUnassigned: (StopWithPhotos) -> Unit,
     onEndTrip: () -> Unit
 ) {
+    val today = remember { Clock.System.todayIn(TimeZone.currentSystemDefault()) }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -175,29 +218,13 @@ private fun LiveTripContent(
                     }
                 },
                 actions = {
-                    // The title was made up when the trip started and it went up as
-                    // public; this is where either gets changed.
+                    // Title and visibility were set for you when the trip started; they change here.
                     IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Outlined.Edit, contentDescription = "Trip settings")
+                        Icon(Icons.Outlined.Settings, contentDescription = "Trip settings")
                     }
                     Tag("LIVE", style = TagStyle.Accent, modifier = Modifier.padding(end = Spacing.md))
                 }
             )
-        },
-        bottomBar = {
-            Column(modifier = Modifier.fillMaxWidth().padding(Spacing.md)) {
-                state.error?.let {
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(bottom = Spacing.xs)
-                    )
-                }
-                SecondaryButton(onClick = onEndTrip, enabled = !state.isEnding, modifier = Modifier.fillMaxWidth()) {
-                    Text("End trip")
-                }
-            }
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
@@ -211,13 +238,18 @@ private fun LiveTripContent(
                     contentPadding = PaddingValues(start = Spacing.md, end = Spacing.md, bottom = Spacing.lg),
                     verticalArrangement = Arrangement.spacedBy(Spacing.sm)
                 ) {
-                    item(key = "intro") {
+                    item(key = "visibility") {
                         Text(
-                            "Post each day when it's done. Until you do, only you can see it.",
+                            liveVisibilityLine(state.visibility),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(top = Spacing.xs)
                         )
+                    }
+                    state.error?.let { error ->
+                        item(key = "error") {
+                            Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                        }
                     }
                     if (state.unassignedStops.isNotEmpty()) {
                         item(key = "unassigned") {
@@ -226,17 +258,48 @@ private fun LiveTripContent(
                     }
                     // Newest day first: while travelling, today is what you're working on.
                     items((state.dayCount downTo 1).toList(), key = { "day-$it" }) { day ->
+                        val date = state.dateOf(day)
+                        val isActedOn = day == actedOnDay
                         LiveDayCard(
                             day = day,
-                            dateLabel = state.dateOf(day)?.shortDayText(),
+                            dateLabel = date?.shortDayText(),
+                            isToday = date == today,
                             stops = state.stopsOn(day),
                             isPosted = state.isPosted(day),
-                            onOpen = { onOpenDay(day) }
+                            isPosting = state.postingDay == day,
+                            isImportingPhotos = isActedOn && state.isImportingPhotos,
+                            note = if (isActedOn) postProblemText(state.postProblem) ?: state.importSummary else null,
+                            onOpen = { onOpenDay(day) },
+                            onPost = { onPostDay(day) },
+                            onAddPhotos = { onAddPhotos(day) }
                         )
+                    }
+                    item(key = "end") {
+                        EndTripRow(isEnding = state.isEnding, onEndTrip = onEndTrip)
                     }
                 }
             }
         }
+    }
+}
+
+/** Who can see the trip, worded for a trip that's posted a day at a time. */
+private fun liveVisibilityLine(visibility: TripVisibility): String = when (visibility) {
+    TripVisibility.PUBLIC -> "Public · Others see each day only after you post it."
+    TripVisibility.UNLISTED -> "Unlisted · Only people with the link, and only days you've posted."
+    TripVisibility.PRIVATE -> "Private · Only you can see this trip."
+}
+
+/** The way out, kept quiet at the end of the list rather than pinned under every day. */
+@Composable
+private fun EndTripRow(isEnding: Boolean, onEndTrip: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(top = Spacing.sm),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text("Back home?", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        TextButton(onClick = onEndTrip, enabled = !isEnding) { Text("End trip") }
     }
 }
 
@@ -272,42 +335,166 @@ private fun TripSettingsDialog(
     )
 }
 
+/**
+ * One day of the trip: what's on it, whether anyone else can see it yet, and
+ * the next thing to do with it. Tapping the card opens the day.
+ */
 @Composable
 private fun LiveDayCard(
     day: Int,
     dateLabel: String?,
+    isToday: Boolean,
     stops: List<StopWithPhotos>,
     isPosted: Boolean,
-    onOpen: () -> Unit
+    isPosting: Boolean,
+    isImportingPhotos: Boolean,
+    note: String?,
+    onOpen: () -> Unit,
+    onPost: () -> Unit,
+    onAddPhotos: () -> Unit
 ) {
+    val photos = stops.flatMap { it.photoUrls }
     HairlineCard(modifier = Modifier.fillMaxWidth().padding(top = Spacing.sm)) {
-        Column(modifier = Modifier.padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    listOfNotNull("Day $day", dateLabel).joinToString(" · "),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.weight(1f)
-                )
-                if (isPosted) Tag("Posted", style = TagStyle.Accent) else Tag("Not posted")
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClickLabel = "Open Day $day", onClick = onOpen)
+                .padding(Spacing.md),
+            verticalArrangement = Arrangement.spacedBy(Spacing.sm)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                // The title takes what it needs and only the leftover goes to the gap,
+                // so the date isn't cut short to make room for empty space.
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
+                ) {
+                    Text(
+                        listOfNotNull("Day $day", dateLabel).joinToString(" · "),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (isToday) Tag("Today")
+                }
+                DayStatusChip(isPosted)
             }
-            Text(
+
+            PhotoStrip(photos, emptyText = if (stops.isEmpty()) "Nothing here yet" else "No photos yet")
+
+            if (stops.isNotEmpty()) {
+                Text(
+                    listOf(
+                        if (stops.size == 1) "1 stop" else "${stops.size} stops",
+                        if (photos.size == 1) "1 photo" else "${photos.size} photos"
+                    ).joinToString(" · "),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                StopPreviewRow(stopPreview(stops.map { it.stop.name }, stops.size))
+            }
+
+            note?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 when {
-                    stops.isEmpty() -> "Nothing here yet."
-                    else -> stops.joinToString(" → ") { it.stop.name }
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (isPosted) {
-                SecondaryButton(onClick = onOpen, modifier = Modifier.fillMaxWidth()) { Text("Edit Day $day") }
-            } else {
-                PrimaryButton(onClick = onOpen, modifier = Modifier.fillMaxWidth()) {
-                    Text(if (stops.isEmpty()) "Add Day $day" else "Review & post Day $day")
+                    isPosted -> TextButton(onClick = onOpen) { Text("Edit day") }
+                    else -> {
+                        if (stops.isNotEmpty()) {
+                            PrimaryButton(onClick = onPost, enabled = !isPosting && !isImportingPhotos) {
+                                if (isPosting) {
+                                    CircularProgressIndicator(
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.onPrimary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                } else {
+                                    Text("Post Day $day")
+                                }
+                            }
+                        }
+                        if (isImportingPhotos) {
+                            CircularProgressIndicator(
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                "Reading photos…",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                            TextButton(onClick = onAddPhotos, enabled = !isPosting) { Text("Add photos") }
+                        }
+                    }
                 }
             }
+        }
+    }
+}
+
+/** "Posted" in the primary tint, or a muted "Draft · only you". */
+@Composable
+private fun DayStatusChip(isPosted: Boolean) {
+    val (container, content) = if (isPosted) {
+        MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) to MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant to MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Text(
+        if (isPosted) "Posted" else "Draft · only you",
+        style = MaterialTheme.typography.labelMedium,
+        color = content,
+        maxLines = 1,
+        modifier = Modifier
+            .clip(RoundedCornerShape(CuratedCornerRadius))
+            .background(container)
+            .padding(horizontal = Spacing.sm, vertical = Spacing.xs)
+    )
+}
+
+/** Up to three of the day's photos, or a quiet empty slot saying [emptyText] when it has none. */
+@Composable
+private fun PhotoStrip(photos: List<String>, emptyText: String) {
+    val shape = RoundedCornerShape(CuratedCornerRadius)
+    if (photos.isEmpty()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .clip(shape)
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+            contentAlignment = Alignment.Center
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                Icon(
+                    Icons.Outlined.PhotoLibrary,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp)
+                )
+                Text(emptyText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        return
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        photos.take(3).forEach { url ->
+            AsyncImage(
+                model = url,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(72.dp)
+                    .clip(shape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+            )
         }
     }
 }
@@ -425,4 +612,55 @@ private fun EndTripSheetContent(
 @Composable
 private fun EndTripSheetPreview() {
     CuratedTheme { EndTripSheetContent(unpostedDays = listOf(3, 4), isEnding = false, canEnd = true, onEnd = {}, onReviewDays = {}) }
+}
+
+private fun previewStop(id: String, name: String, photos: Int) = StopWithPhotos(
+    stop = Stop(
+        id = id, dayId = "day", tripId = "trip", name = name, category = StopCategory.SIGHT,
+        latitude = 0.0, longitude = 0.0, orderInDay = 0, createdAt = Instant.parse("2026-10-05T09:00:00Z")
+    ),
+    photoUrls = List(photos) { "" }
+)
+
+@Preview(showBackground = true, name = "Draft day")
+@Composable
+private fun LiveDayCardDraftPreview() {
+    CuratedTheme {
+        LiveDayCard(
+            day = 3, dateLabel = "Mon, Oct 5", isToday = true,
+            stops = listOf(
+                previewStop("1", "Belém Tower", 3),
+                previewStop("2", "Pastéis de Belém", 1),
+                previewStop("3", "LX Factory", 1),
+                previewStop("4", "Time Out Market", 0)
+            ),
+            isPosted = false, isPosting = false, isImportingPhotos = false, note = null,
+            onOpen = {}, onPost = {}, onAddPhotos = {}
+        )
+    }
+}
+
+@Preview(showBackground = true, name = "Posted day")
+@Composable
+private fun LiveDayCardPostedPreview() {
+    CuratedTheme {
+        LiveDayCard(
+            day = 2, dateLabel = "Sun, Oct 4", isToday = false,
+            stops = listOf(previewStop("1", "Miradouro de Santa Luzia", 2), previewStop("2", "Alfama", 2)),
+            isPosted = true, isPosting = false, isImportingPhotos = false, note = null,
+            onOpen = {}, onPost = {}, onAddPhotos = {}
+        )
+    }
+}
+
+@Preview(showBackground = true, name = "Empty day")
+@Composable
+private fun LiveDayCardEmptyPreview() {
+    CuratedTheme {
+        LiveDayCard(
+            day = 1, dateLabel = "Sat, Oct 3", isToday = false, stops = emptyList(),
+            isPosted = false, isPosting = false, isImportingPhotos = false, note = null,
+            onOpen = {}, onPost = {}, onAddPhotos = {}
+        )
+    }
 }
