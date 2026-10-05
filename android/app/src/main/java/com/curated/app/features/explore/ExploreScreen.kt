@@ -285,6 +285,7 @@ private fun ExploreMap(
     val scope = rememberCoroutineScope()
     val cameraPositionState = rememberCameraPositionState { position = DEFAULT_WORLD_CAMERA }
     val rowState = rememberLazyListState()
+    val listState = rememberLazyListState()
     var mapLoaded by remember { mutableStateOf(false) }
     // The results the camera was last fitted to. Saved, so coming back to Explore
     // doesn't snap the camera away from where it was left.
@@ -350,6 +351,20 @@ private fun ExploreMap(
         offerAreaSearch = false
     }
 
+    // New results start at the top: the old offset would land partway down a
+    // different list, with its count and first trips scrolled away.
+    // Saved, so coming back from a trip (which recreates this) keeps the position.
+    var listResultsKey by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(state.pinsKey, area) {
+        val key = "${state.pinsKey}|$area"
+        if (state.pinsKey == null || key == listResultsKey) return@LaunchedEffect
+        val firstResults = listResultsKey == null
+        listResultsKey = key
+        if (firstResults) return@LaunchedEffect
+        listState.scrollToItem(0)
+        rowState.scrollToItem(0)
+    }
+
     val scoped = area
     // The list's order is the ranking; the row and the scoped list keep it.
     val pinnedIn = { region: MapRegion ->
@@ -377,6 +392,7 @@ private fun ExploreMap(
                 onClearSearch = onClearSearch,
                 selectedTripId = selectedTripId,
                 rowState = rowState,
+                listState = listState,
                 onTripClick = onTripClick,
                 onAuthorClick = onAuthorClick,
                 onLikeToggle = onLikeToggle,

@@ -68,12 +68,14 @@ fun ExploreSheetContent(
     onClearSearch: () -> Unit,
     selectedTripId: String?,
     rowState: LazyListState,
+    listState: LazyListState,
     onTripClick: (String) -> Unit,
     onAuthorClick: (String) -> Unit,
     onLikeToggle: (String) -> Unit,
     onSaveToggle: (String) -> Unit
 ) {
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = Spacing.xl),
         verticalArrangement = Arrangement.spacedBy(Spacing.md)
