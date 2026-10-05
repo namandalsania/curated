@@ -11,7 +11,9 @@ import com.curated.app.core.model.Trip
 import com.curated.app.core.model.TripStatus
 import com.curated.app.core.model.TripVisibility
 import com.curated.app.core.model.User
+import com.curated.app.core.trip.StopPlacement
 import com.curated.app.core.trip.deriveCover
+import com.curated.app.core.trip.firstStopByTrip
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Columns
@@ -61,7 +63,7 @@ class TripRepository(private val client: SupabaseClient) {
     private suspend fun fetchStopLocations(trips: List<Trip>): List<StopLocationRow> {
         if (trips.isEmpty()) return emptyList()
         return postgrest.from("stops")
-            .select(columns = Columns.raw("trip_id,latitude,longitude,order_in_day")) {
+            .select(columns = Columns.raw("id,trip_id,latitude,longitude,order_in_day,$STOP_DAY_EMBED")) {
                 filter { isIn("trip_id", trips.map { it.id }) }
             }
             .decodeList()
@@ -70,9 +72,22 @@ class TripRepository(private val client: SupabaseClient) {
     private suspend fun tripMapPins(trips: List<Trip>): List<TripMapPin> {
         if (trips.isEmpty()) return emptyList()
 
-        val firstStopByTrip = fetchStopLocations(trips)
-            .groupBy { it.tripId }
-            .mapValues { (_, rows) -> rows.minByOrNull { it.orderInDay } }
+        // The first stop of the earliest day. Ordering by order_in_day alone
+        // picked any day's first stop, since every day starts again at 0.
+        val draftIds = trips.filter { it.status == TripStatus.DRAFT }.map { it.id }.toSet()
+        val firstStopByTrip = firstStopByTrip(
+            fetchStopLocations(trips).map {
+                StopPlacement(
+                    stopId = it.id,
+                    tripId = it.tripId,
+                    dayIndex = it.day?.dayIndex,
+                    orderInDay = it.orderInDay,
+                    latitude = it.latitude,
+                    longitude = it.longitude
+                )
+            },
+            daylessAllowed = { tripId -> tripId in draftIds }
+        )
 
         return trips.mapNotNull { trip ->
             firstStopByTrip[trip.id]?.let { loc ->
@@ -677,10 +692,12 @@ private const val STOP_DAY_EMBED = "day:days!stops_day_id_fkey(day_index)"
 
 @Serializable
 private data class StopLocationRow(
+    val id: String,
     @SerialName("trip_id") val tripId: String,
     val latitude: Double,
     val longitude: Double,
-    @SerialName("order_in_day") val orderInDay: Int
+    @SerialName("order_in_day") val orderInDay: Int,
+    val day: StopDayRef? = null
 )
 
 @Serializable
