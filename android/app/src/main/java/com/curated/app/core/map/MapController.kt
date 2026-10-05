@@ -13,6 +13,7 @@ import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.LatLngBounds
 import com.google.maps.android.clustering.ClusterItem
+import com.google.maps.android.clustering.view.DefaultClusterRenderer
 import com.google.maps.android.compose.CameraPositionState
 import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.clustering.Clustering
@@ -84,10 +85,18 @@ fun ClusteredMap(
             clusterContent = { cluster -> CuratedClusterBubble(cluster.items.sumOf { it.pin.weight }) },
             clusterItemContent = pinContent?.let { render ->
                 { item: PinClusterItem -> render(item.pin) }
+            },
+            // The library only groups 4 or more pins by default, so 2-3 trips
+            // in one city drew as stacked pins: one visible, the others
+            // unreachable. Grouping from 2 gives them a count to tap instead.
+            onClusterManager = { manager ->
+                (manager.renderer as? DefaultClusterRenderer<PinClusterItem>)?.minClusterSize = MIN_CLUSTER_SIZE
             }
         )
     }
 }
+
+private const val MIN_CLUSTER_SIZE = 2
 
 /** Room around a cluster's pins once it's zoomed into. */
 private val ClusterZoomPadding = 64.dp
