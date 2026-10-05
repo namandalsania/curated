@@ -9,19 +9,13 @@ enum class TripLength { SHORT, MEDIUM, LONG }
 
 enum class FollowScope { EVERYONE, FOLLOWING }
 
-enum class ExploreViewMode { MAP, LIST }
-
 data class ExploreFilters(
     val tripLength: TripLength? = null,
     val budgetTag: BudgetTag? = null,
     val seasonTag: SeasonTag? = null,
     val followScope: FollowScope = FollowScope.EVERYONE
 ) {
-    /**
-     * How many filters are narrowing the results. Shown on Explore's search pill,
-     * which is now the only place a filter is visible from - the bar itself lives
-     * inside the sheet.
-     */
+    /** How many filters are narrowing the results; "Clear all" shows once it's above zero. */
     val activeCount: Int
         get() = listOf(
             tripLength != null,

@@ -18,6 +18,9 @@ import com.curated.app.core.model.BudgetTag
 import com.curated.app.core.model.SeasonTag
 import com.curated.app.core.model.Trip
 import com.curated.app.features.home.FeedItem
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -29,11 +32,13 @@ import kotlinx.coroutines.launch
 private const val SEARCH_DEBOUNCE_MS = 350L
 private const val MAX_SUGGESTIONS = 6
 
+/** Coming back to Explore within this long reuses what's loaded. */
+private val RELOAD_AFTER = 60.seconds
+
 data class ExploreUiState(
     val isLoading: Boolean = false,
     /** Pins load after the list is ready, so they can lag behind it. */
     val isMapLoading: Boolean = false,
-    val viewMode: ExploreViewMode = ExploreViewMode.MAP,
     val searchQuery: String = "",
     val filters: ExploreFilters = ExploreFilters(),
     /** One pin per trip (its first stop), in the same order as [listItems]. */
@@ -62,10 +67,21 @@ class ExploreViewModel(
 
     private var searchJob: Job? = null
 
+    /** When the last search finished, for [refreshIfStale]. Null until one has. */
+    private var lastLoadedAt: TimeMark? = null
+
     fun refresh() = runSearchNow()
 
-    fun setViewMode(mode: ExploreViewMode) {
-        _state.update { it.copy(viewMode = mode) }
+    /**
+     * Coming back to Explore: reload, unless the last load finished under a
+     * minute ago or one is already running. The results' key doesn't change,
+     * so the map keeps its camera.
+     */
+    fun refreshIfStale() {
+        if (searchJob?.isActive == true) return
+        val last = lastLoadedAt
+        if (last != null && last.elapsedNow() < RELOAD_AFTER) return
+        runSearchNow()
     }
 
     fun setSearchQuery(query: String) {
@@ -78,7 +94,7 @@ class ExploreViewModel(
     }
 
     fun selectDestinationSuggestion(destination: String) {
-        _state.update { it.copy(searchQuery = destination, viewMode = ExploreViewMode.LIST) }
+        _state.update { it.copy(searchQuery = destination) }
         runSearchNow()
     }
 
@@ -171,6 +187,7 @@ class ExploreViewModel(
 
             val tripPins = tripRepository.fetchTripMapPinsFor(ranked)
             _state.update { it.copy(isMapLoading = false, tripPins = tripPins, pinsKey = key) }
+            lastLoadedAt = TimeSource.Monotonic.markNow()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
