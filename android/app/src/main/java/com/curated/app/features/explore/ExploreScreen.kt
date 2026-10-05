@@ -60,6 +60,7 @@ import com.curated.app.core.map.ClusteredMap
 import com.curated.app.core.map.CuratedPlacePin
 import com.curated.app.core.map.DEFAULT_WORLD_CAMERA
 import com.curated.app.core.map.MapPin
+import com.curated.app.core.map.firstRanked
 import com.curated.app.designsystem.CuratedCornerRadius
 import com.curated.app.designsystem.Spacing
 import com.curated.app.designsystem.components.CuratedFilterChip
@@ -421,6 +422,16 @@ private fun ExploreMap(
                     selectedTripId = pin.id
                     val index = inView.indexOfFirst { it.trip.id == pin.id }
                     if (index >= 0) scope.launch { rowState.animateScrollToItem(index) }
+                },
+                // Trips starting at the same spot never split apart, however far
+                // in the map zooms: show the top-ranked of them in the row instead.
+                onStackClick = { pins ->
+                    val first = firstRanked(pins.map { it.id }.toSet(), inView.map { it.trip.id })
+                    if (first != null) {
+                        selectedTripId = first
+                        val index = inView.indexOfFirst { it.trip.id == first }
+                        scope.launch { rowState.animateScrollToItem(index) }
+                    }
                 },
                 pinContent = { CuratedPlacePin() }
             )

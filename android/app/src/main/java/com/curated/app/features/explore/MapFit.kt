@@ -1,5 +1,7 @@
 package com.curated.app.features.explore
 
+import com.curated.app.core.map.SAME_SPOT_DEGREES
+
 /**
  * Where Explore's camera should open so every trip pin is on screen: a box
  * around them, or a single point at city zoom when there's only one place to
@@ -22,9 +24,6 @@ sealed interface MapFit {
         /** Close enough to see a city's neighborhoods. */
         const val CITY_ZOOM = 11f
 
-        /** Pins closer than this (in degrees, ~10 m) count as the same spot. */
-        private const val SAME_SPOT = 0.0001
-
         /** Widest spread of longitudes a phone-sized map can fit, margins included, at its furthest zoom. */
         const val MAX_SPAN = 45.0
 
@@ -36,7 +35,7 @@ sealed interface MapFit {
             val north = points.maxOf { it.first }
             val west = points.minOf { it.second }
             val east = points.maxOf { it.second }
-            return if (north - south < SAME_SPOT && east - west < SAME_SPOT) {
+            return if (north - south < SAME_SPOT_DEGREES && east - west < SAME_SPOT_DEGREES) {
                 Point(points.first().first, points.first().second)
             } else {
                 Box(south, west, north, east)

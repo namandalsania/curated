@@ -48,6 +48,11 @@ fun ClusteredMap(
     contentPadding: PaddingValues = PaddingValues(),
     onMapLoaded: () -> Unit = {},
     onPinClick: (MapPin) -> Unit = {},
+    /**
+     * Tapped a cluster whose pins all sit in one spot, which zooming can never
+     * split. Null keeps the old behavior: step the zoom in.
+     */
+    onStackClick: ((List<MapPin>) -> Unit)? = null,
     /** Drawn as ordinary UI, then turned into the marker's bitmap by the clustering library. */
     pinContent: (@Composable @UiComposable (MapPin) -> Unit)? = null
 ) {
@@ -65,8 +70,12 @@ fun ClusteredMap(
             items = pins.map { PinClusterItem(it) },
             onClusterClick = { cluster ->
                 val points = cluster.items.map { it.position }
+                val sameSpot = allAtSameSpot(points.map { it.latitude to it.longitude })
+                if (sameSpot && onStackClick != null) {
+                    onStackClick(cluster.items.map { it.pin })
+                    return@Clustering true
+                }
                 val bounds = LatLngBounds.builder().apply { points.forEach(::include) }.build()
-                val sameSpot = points.all { it == points.first() }
                 val update = if (sameSpot) {
                     // Nothing to fit: step in instead.
                     CameraUpdateFactory.newLatLngZoom(cluster.position, cameraPositionState.position.zoom + 3f)
