@@ -12,11 +12,9 @@ import com.curated.app.core.data.LikeSummary
 import com.curated.app.core.data.SocialRepository
 import com.curated.app.core.data.SupabaseProvider
 import com.curated.app.core.data.TripCompleteness
+import com.curated.app.core.data.TripMapPin
 import com.curated.app.core.data.TripRepository
 import com.curated.app.core.data.TripSearchParams
-import com.curated.app.core.geocode.GeocodingService
-import com.curated.app.core.map.CountryAggregator
-import com.curated.app.core.map.CountryVisit
 import com.curated.app.core.model.BudgetTag
 import com.curated.app.core.model.SeasonTag
 import com.curated.app.core.model.Trip
@@ -34,12 +32,13 @@ private const val MAX_SUGGESTIONS = 6
 
 data class ExploreUiState(
     val isLoading: Boolean = false,
-    /** Country pins are reverse-geocoded after the list is ready, so they can lag behind it. */
+    /** Pins load after the list is ready, so they can lag behind it. */
     val isMapLoading: Boolean = false,
     val viewMode: ExploreViewMode = ExploreViewMode.MAP,
     val searchQuery: String = "",
     val filters: ExploreFilters = ExploreFilters(),
-    val countryVisits: List<CountryVisit> = emptyList(),
+    /** One pin per trip (its first stop), in the same order as [listItems]. */
+    val tripPins: List<TripMapPin> = emptyList(),
     val listItems: List<FeedItem> = emptyList(),
     val destinationSuggestions: List<String> = emptyList(),
     val error: String? = null
@@ -51,7 +50,6 @@ class ExploreViewModel(
     private val tripRepository: TripRepository,
     private val engagementRepository: EngagementRepository,
     private val commentRepository: CommentRepository,
-    private val geocodingService: GeocodingService,
     private val filterStore: ExploreFilterStore
 ) : ViewModel() {
 
@@ -115,7 +113,7 @@ class ExploreViewModel(
                     it.copy(
                         isLoading = false,
                         isMapLoading = false,
-                        countryVisits = emptyList(),
+                        tripPins = emptyList(),
                         listItems = emptyList(),
                         destinationSuggestions = emptyList()
                     )
@@ -164,8 +162,7 @@ class ExploreViewModel(
                 )
             }
 
-            // Publish the list first: reverse-geocoding every pin is slow (one
-            // Geocoder call per trip) and shouldn't hold the list hostage.
+            // Publish the list first; the pins need another query.
             _state.update {
                 it.copy(
                     isLoading = false,
@@ -176,11 +173,7 @@ class ExploreViewModel(
             }
 
             val tripPins = tripRepository.fetchTripMapPinsFor(ranked)
-            val countryVisits = CountryAggregator.aggregate(
-                tripPins.map { it.latitude to it.longitude },
-                geocodingService
-            )
-            _state.update { it.copy(isMapLoading = false, countryVisits = countryVisits) }
+            _state.update { it.copy(isMapLoading = false, tripPins = tripPins) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -251,7 +244,6 @@ class ExploreViewModel(
                     tripRepository = TripRepository(client),
                     engagementRepository = EngagementRepository(client),
                     commentRepository = CommentRepository(client),
-                    geocodingService = GeocodingService(appContext),
                     filterStore = ExploreFilterStore(appContext)
                 )
             }

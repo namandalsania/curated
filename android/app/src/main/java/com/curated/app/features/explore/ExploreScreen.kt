@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.LocationOn
@@ -21,6 +22,13 @@ import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.automirrored.outlined.List
+import androidx.compose.material3.BottomSheetScaffold
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.platform.LocalDensity
+import com.curated.app.core.map.CuratedPlacePin
+import com.curated.app.core.map.DEFAULT_WORLD_CAMERA
+import com.curated.app.core.map.MapPin
 import com.curated.app.designsystem.components.AnimatedListItem
 import com.curated.app.designsystem.components.CuratedFilterChip
 import com.curated.app.designsystem.components.EmptyState
@@ -49,8 +57,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.curated.app.core.map.ClusteredMap
-import com.curated.app.core.map.CountryPinBadge
-import com.curated.app.core.map.toMapPin
 import com.curated.app.core.model.BudgetTag
 import com.curated.app.core.model.SeasonTag
 import com.curated.app.designsystem.Spacing
@@ -66,6 +72,12 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.style.TextOverflow
 import com.curated.app.designsystem.CuratedCornerRadius
 import com.curated.app.features.home.FeedItemCard
+import com.google.android.gms.maps.CameraUpdateFactory
+import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.LatLngBounds
+import com.google.maps.android.compose.CameraMoveStartedReason
+import com.google.maps.android.compose.rememberCameraPositionState
+import kotlinx.coroutines.launch
 
 @Composable
 fun ExploreScreen(
@@ -111,28 +123,13 @@ fun ExploreScreen(
                     onRetry = { viewModel.refresh() },
                     modifier = Modifier.align(Alignment.Center)
                 )
-                state.viewMode == ExploreViewMode.MAP -> {
-                    ClusteredMap(
-                        pins = state.countryVisits.map { it.toMapPin() },
-                        onPinClick = { pin ->
-                            focusManager.clearFocus()
-                            viewModel.selectDestinationSuggestion(pin.title)
-                        },
-                        pinContent = { pin -> CountryPinBadge(pin.weight) }
-                    )
-                    if (state.isLoading || state.isMapLoading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.align(Alignment.TopCenter).padding(Spacing.md)
-                        )
-                    } else if (state.countryVisits.isEmpty()) {
-                        EmptyState(
-                            headline = "No trips match yet",
-                            body = "Try widening your filters or searching a different destination.",
-                            icon = Icons.Outlined.Map,
-                            modifier = Modifier.align(Alignment.Center)
-                        )
-                    }
-                }
+                state.viewMode == ExploreViewMode.MAP -> ExploreMap(
+                    state = state,
+                    onTripClick = onTripClick,
+                    onAuthorClick = onAuthorClick,
+                    onLikeToggle = viewModel::toggleLike,
+                    onSaveToggle = viewModel::toggleSave
+                )
                 state.isLoading && state.listItems.isEmpty() -> Column(modifier = Modifier.fillMaxSize()) {
                     repeat(3) {
                         TripCardSkeleton(modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.sm))
@@ -169,7 +166,7 @@ fun ExploreScreen(
                 activeFilterCount = state.filters.activeCount,
                 onClick = { showSearch = true },
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
+                    .align(if (state.viewMode == ExploreViewMode.MAP) Alignment.TopCenter else Alignment.BottomCenter)
                     .padding(horizontal = Spacing.lg, vertical = Spacing.md)
             )
         }
@@ -391,3 +388,101 @@ private fun SeasonTag.label() = when (this) {
     SeasonTag.FALL -> "Fall"
     SeasonTag.WINTER -> "Winter"
 }
+
+/**
+ * The map with its sheet. The camera opens fitted to every trip pin, once; the
+ * sheet's row follows whatever part of the map is in view, refreshed each time
+ * the camera settles. Tapping a pin brings its trip's card into the row.
+ */
+@Composable
+private fun ExploreMap(
+    state: ExploreUiState,
+    onTripClick: (String) -> Unit,
+    onAuthorClick: (String) -> Unit,
+    onLikeToggle: (String) -> Unit,
+    onSaveToggle: (String) -> Unit
+) {
+    val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
+    val cameraPositionState = rememberCameraPositionState { position = DEFAULT_WORLD_CAMERA }
+    val rowState = rememberLazyListState()
+    var mapLoaded by remember { mutableStateOf(false) }
+    // Saved, so coming back to Explore doesn't snap the camera away from where it was left.
+    var fitted by rememberSaveable { mutableStateOf(false) }
+    var userMoved by rememberSaveable { mutableStateOf(false) }
+    var inViewIds by remember { mutableStateOf<Set<String>?>(null) }
+    var selectedTripId by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(cameraPositionState.isMoving) {
+        if (cameraPositionState.isMoving &&
+            cameraPositionState.cameraMoveStartedReason == CameraMoveStartedReason.GESTURE
+        ) {
+            userMoved = true
+        }
+    }
+
+    // Fit once, after the first pins arrive - never after the user has moved the map.
+    LaunchedEffect(mapLoaded, state.tripPins, state.isMapLoading) {
+        if (!mapLoaded || fitted || userMoved || state.isMapLoading) return@LaunchedEffect
+        val fit = MapFit.of(state.tripPins.map { it.latitude to it.longitude }) ?: return@LaunchedEffect
+        val update = when (fit) {
+            is MapFit.Point -> CameraUpdateFactory.newLatLngZoom(LatLng(fit.latitude, fit.longitude), MapFit.CITY_ZOOM)
+            is MapFit.Box -> CameraUpdateFactory.newLatLngBounds(
+                LatLngBounds(LatLng(fit.south, fit.west), LatLng(fit.north, fit.east)),
+                with(density) { FitPadding.roundToPx() }
+            )
+        }
+        runCatching { cameraPositionState.animate(update) }
+        fitted = true
+    }
+
+    // Which trips are in view, each time the camera settles.
+    LaunchedEffect(cameraPositionState.isMoving, mapLoaded, state.tripPins) {
+        if (!mapLoaded || cameraPositionState.isMoving) return@LaunchedEffect
+        val bounds = cameraPositionState.projection?.visibleRegion?.latLngBounds ?: return@LaunchedEffect
+        inViewIds = state.tripPins
+            .filter { bounds.contains(LatLng(it.latitude, it.longitude)) }
+            .map { it.trip.id }
+            .toSet()
+    }
+
+    // The list's order is the ranking, so the row keeps it.
+    val inView = inViewIds?.let { ids -> state.listItems.filter { it.trip.id in ids } } ?: state.listItems
+
+    BottomSheetScaffold(
+        sheetPeekHeight = ExploreSheetPeekHeight,
+        sheetContainerColor = MaterialTheme.colorScheme.surface,
+        sheetShape = RoundedCornerShape(topStart = CuratedCornerRadius, topEnd = CuratedCornerRadius),
+        sheetContent = {
+            ExploreSheetContent(
+                inView = inView,
+                all = state.listItems,
+                isLoading = state.isLoading || state.isMapLoading,
+                selectedTripId = selectedTripId,
+                rowState = rowState,
+                onTripClick = onTripClick,
+                onAuthorClick = onAuthorClick,
+                onLikeToggle = onLikeToggle,
+                onSaveToggle = onSaveToggle
+            )
+        }
+    ) {
+        ClusteredMap(
+            pins = state.tripPins.map { MapPin(id = it.trip.id, position = LatLng(it.latitude, it.longitude), title = it.trip.title) },
+            cameraPositionState = cameraPositionState,
+            // Fitting and "in this area" stop at the peeking sheet. The top isn't
+            // padded: a pin beside the search pill is still on screen, so it counts.
+            contentPadding = PaddingValues(bottom = ExploreSheetPeekHeight),
+            onMapLoaded = { mapLoaded = true },
+            onPinClick = { pin ->
+                selectedTripId = pin.id
+                val index = inView.indexOfFirst { it.trip.id == pin.id }
+                if (index >= 0) scope.launch { rowState.animateScrollToItem(index) }
+            },
+            pinContent = { CuratedPlacePin() }
+        )
+    }
+}
+
+/** Room around the pins when the camera fits them - enough to clear the search pill at the top. */
+private val FitPadding = 72.dp

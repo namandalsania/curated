@@ -1,14 +1,22 @@
 package com.curated.app.core.map
 
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
+import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.LatLngBounds
 import com.google.maps.android.clustering.ClusterItem
+import com.google.maps.android.compose.CameraPositionState
 import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.clustering.Clustering
 import com.google.maps.android.compose.rememberCameraPositionState
+import kotlinx.coroutines.launch
 
 /** A single point to show on any of the app's maps, decoupled from Trip/Stop models. */
 data class MapPin(
@@ -24,27 +32,47 @@ val DEFAULT_WORLD_CAMERA: CameraPosition = CameraPosition.fromLatLngZoom(LatLng(
 /**
  * Shared map rendering used by both Explore (individual trip pins) and the
  * profile's aggregate visited-places map (country pins sized by trip count).
- * Tapping a cluster zooms in via the library's default behavior; no route
- * line is drawn here since these are collections of places, not one trip's path.
+ * Tapping a cluster zooms in until its pins split apart; no route line is
+ * drawn here since these are collections of places, not one trip's path.
  */
 @Composable
 fun ClusteredMap(
     pins: List<MapPin>,
     modifier: Modifier = Modifier.fillMaxSize(),
     initialCamera: CameraPosition = DEFAULT_WORLD_CAMERA,
+    /** Pass one to move or read the camera from outside; otherwise the map keeps its own. */
+    cameraPositionState: CameraPositionState = rememberCameraPositionState { position = initialCamera },
+    /** Space covered by other UI (a bottom sheet); fitting and the visible region stay clear of it. */
+    contentPadding: PaddingValues = PaddingValues(),
+    onMapLoaded: () -> Unit = {},
     onPinClick: (MapPin) -> Unit = {},
     pinContent: (@Composable (MapPin) -> Unit)? = null
 ) {
-    val cameraPositionState = rememberCameraPositionState { position = initialCamera }
-
+    val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
     GoogleMap(
         modifier = modifier,
         cameraPositionState = cameraPositionState,
+        contentPadding = contentPadding,
+        onMapLoaded = onMapLoaded,
         properties = rememberCuratedMapProperties(),
         uiSettings = rememberCuratedMapUiSettings()
     ) {
         Clustering(
             items = pins.map { PinClusterItem(it) },
+            onClusterClick = { cluster ->
+                val points = cluster.items.map { it.position }
+                val bounds = LatLngBounds.builder().apply { points.forEach(::include) }.build()
+                val sameSpot = points.all { it == points.first() }
+                val update = if (sameSpot) {
+                    // Nothing to fit: step in instead.
+                    CameraUpdateFactory.newLatLngZoom(cluster.position, cameraPositionState.position.zoom + 3f)
+                } else {
+                    CameraUpdateFactory.newLatLngBounds(bounds, with(density) { ClusterZoomPadding.roundToPx() })
+                }
+                scope.launch { runCatching { cameraPositionState.animate(update) } }
+                true
+            },
             onClusterItemClick = { item ->
                 onPinClick(item.pin)
                 true
@@ -58,6 +86,9 @@ fun ClusteredMap(
         )
     }
 }
+
+/** Room around a cluster's pins once it's zoomed into. */
+private val ClusterZoomPadding = 64.dp
 
 private class PinClusterItem(val pin: MapPin) : ClusterItem {
     override fun getPosition(): LatLng = pin.position
