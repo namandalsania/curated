@@ -236,7 +236,12 @@ fun ShareTripSheet(tripId: String, onDismiss: () -> Unit) {
     )
     val state by viewModel.state.collectAsState()
 
-    LaunchedEffect(state.sentTo) { if (state.sentTo != null) onDismiss() }
+    LaunchedEffect(state.sentTo) {
+        if (state.sentTo != null) {
+            viewModel.consumeSent()
+            onDismiss()
+        }
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,

@@ -107,6 +107,15 @@ class ShareTripViewModel(
         }
     }
 
+    /**
+     * Clears a finished send. This view model outlives the sheet (it's keyed to
+     * the trip), so without this the next open still saw sentTo set and closed
+     * itself straight away - a trip could only be shared once per visit.
+     */
+    fun consumeSent() = _state.update {
+        it.copy(sentTo = null, selected = emptySet(), note = "", query = "", searchResults = emptyList())
+    }
+
     companion object {
         private const val TAG = "ShareTripViewModel"
 
