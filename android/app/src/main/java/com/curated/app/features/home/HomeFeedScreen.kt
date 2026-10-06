@@ -54,6 +54,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.curated.app.core.data.BlockedAccounts
 import com.curated.app.core.model.Notification
 import com.curated.app.core.model.NotificationType
 import com.curated.app.designsystem.CuratedCornerRadius
@@ -79,7 +80,10 @@ fun HomeFeedScreen(
 ) {
     val context = LocalContext.current
     val viewModel: HomeViewModel = viewModel(factory = HomeViewModel.factory(context))
-    val state by viewModel.state.collectAsState()
+    val rawState by viewModel.state.collectAsState()
+    // Drops blocked accounts' content already on screen; the database stops serving it.
+    val blocked by BlockedAccounts.ids.collectAsState()
+    val state = rawState.withoutAuthors(blocked)
     var showNotifications by remember { mutableStateOf(false) }
     var savedBannerDismissed by rememberSaveable { mutableStateOf(false) }
     val listState = rememberLazyListState()

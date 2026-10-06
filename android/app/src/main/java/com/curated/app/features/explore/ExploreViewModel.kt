@@ -264,3 +264,11 @@ class ExploreViewModel(
         }
     }
 }
+
+/** This state without [authorIds]' trips - in the sheet, the full list and on the map. */
+internal fun ExploreUiState.withoutAuthors(authorIds: Set<String>): ExploreUiState =
+    if (authorIds.isEmpty()) this
+    else copy(
+        listItems = listItems.filter { it.trip.authorId !in authorIds },
+        tripPins = tripPins.filter { it.trip.authorId !in authorIds }
+    )

@@ -38,6 +38,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
+import com.curated.app.core.data.BlockedAccounts
 import com.curated.app.core.model.TripShare
 import com.curated.app.designsystem.CuratedCornerRadius
 import com.curated.app.designsystem.Spacing
@@ -49,7 +50,10 @@ import com.curated.app.designsystem.components.HairlineCard
 fun InboxScreen(onBack: () -> Unit, onOpenTrip: (String) -> Unit) {
     val context = LocalContext.current
     val viewModel: InboxViewModel = viewModel(factory = InboxViewModel.factory(context))
-    val state by viewModel.state.collectAsState()
+    val rawState by viewModel.state.collectAsState()
+    // Drops blocked accounts' content already on screen; the database stops serving it.
+    val blocked by BlockedAccounts.ids.collectAsState()
+    val state = rawState.withoutAuthors(blocked)
 
     LaunchedEffect(Unit) { viewModel.load() }
 

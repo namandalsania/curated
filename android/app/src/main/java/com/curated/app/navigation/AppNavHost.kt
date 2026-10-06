@@ -19,12 +19,14 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.height
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -34,12 +36,16 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.navigation.NavType
+import com.curated.app.core.data.BlockedAccounts
+import com.curated.app.core.data.ModerationRepository
+import com.curated.app.core.data.SupabaseProvider
 import com.curated.app.features.create.CreateRoutes
 import com.curated.app.features.create.createNavGraph
 import com.curated.app.features.explore.ExploreScreen
 import com.curated.app.features.explore.TripDetailScreen
 import com.curated.app.features.home.HomeFeedScreen
 import com.curated.app.features.home.InboxScreen
+import com.curated.app.features.moderation.BlockedAccountsScreen
 import com.curated.app.features.plans.PlanEditorScreen
 import com.curated.app.features.plans.PlansScreen
 import com.curated.app.features.plans.SavedPlacesScreen
@@ -51,6 +57,13 @@ import com.curated.app.features.profile.ProfileScreen
 @Composable
 fun AppNavHost(currentUserId: String) {
     val navController = rememberNavController()
+    val context = LocalContext.current
+    // Who you've blocked, for screens to filter what they've already loaded.
+    // Reset per account, so a sign-out doesn't leak the last user's list.
+    LaunchedEffect(currentUserId) {
+        BlockedAccounts.clear()
+        runCatching { ModerationRepository(SupabaseProvider.client(context.applicationContext)).refreshBlockedIds() }
+    }
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
     val topLevelRoutes = setOf(AppRoutes.HOME, AppRoutes.EXPLORE, CreateRoutes.GRAPH, AppRoutes.PROFILE_PATTERN)
@@ -178,8 +191,13 @@ fun AppNavHost(currentUserId: String) {
                     onResumeDraft = { tripId -> navController.navigate(CreateRoutes.resumeDraft(tripId)) },
                     onOpenLiveTrip = { tripId -> navController.navigate(CreateRoutes.live(tripId)) },
                     onOpenPlans = { navController.navigate(AppRoutes.PLANS) { launchSingleTop = true } },
+                    onOpenBlockedAccounts = { navController.navigate(AppRoutes.BLOCKED_ACCOUNTS) { launchSingleTop = true } },
+                    onBack = { navController.popBackStack() },
                     onSignedOut = {}
                 )
+            }
+            composable(AppRoutes.BLOCKED_ACCOUNTS) {
+                BlockedAccountsScreen(onBack = { navController.popBackStack() })
             }
             composable(AppRoutes.INBOX) {
                 InboxScreen(

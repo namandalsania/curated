@@ -44,12 +44,18 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
+import com.curated.app.core.data.BlockedAccounts
+import com.curated.app.core.data.ReportTarget
 import com.curated.app.core.format.shortDayText
 import com.curated.app.core.model.StopComment
 import com.curated.app.core.model.User
 import com.curated.app.designsystem.CuratedCornerRadius
 import com.curated.app.designsystem.Spacing
 import com.curated.app.designsystem.components.PrimaryButton
+import com.curated.app.features.moderation.ModerationDialogs
+import com.curated.app.features.moderation.ModerationMenu
+import com.curated.app.features.moderation.ModerationSubject
+import com.curated.app.features.moderation.rememberModerationViewModel
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 
@@ -71,6 +77,18 @@ fun CommentsSheet(
         factory = CommentsViewModel.factory(context, stopId, tripId, tripAuthorId)
     )
     val state by viewModel.state.collectAsState()
+    val blocked by BlockedAccounts.ids.collectAsState()
+    val comments = state.comments.filter { it.authorId !in blocked }
+    val moderation = rememberModerationViewModel(key = "comments-$stopId")
+    val moderationState by moderation.state.collectAsState()
+    // The comment is already filtered out; reload so the count is right too.
+    LaunchedEffect(moderationState.blockedUserId) {
+        if (moderationState.blockedUserId != null) {
+            moderation.consumeBlocked()
+            viewModel.load()
+        }
+    }
+    ModerationDialogs(moderation)
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -88,7 +106,7 @@ fun CommentsSheet(
                 modifier = Modifier.padding(horizontal = Spacing.md)
             )
             Text(
-                if (state.comments.isEmpty()) "No comments yet" else "${state.comments.size} comments",
+                if (comments.isEmpty()) "No comments yet" else "${comments.size} comments",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.xs)
@@ -99,18 +117,34 @@ fun CommentsSheet(
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.align(Alignment.CenterHorizontally).padding(Spacing.lg)
                 )
-                state.comments.isEmpty() -> Text(
+                comments.isEmpty() -> Text(
                     "Ask about opening times, what to order, whether it's worth the queue.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.sm)
                 )
                 else -> LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
-                    items(state.comments, key = { it.id }) { comment ->
+                    items(comments, key = { it.id }) { comment ->
                         CommentRow(
                             comment = comment,
                             canDelete = viewModel.canDelete(comment),
-                            onDelete = { viewModel.delete(comment) }
+                            onDelete = { viewModel.delete(comment) },
+                            moderation = if (comment.authorId != state.myUserId) {
+                                {
+                                    ModerationMenu(
+                                        subject = ModerationSubject(
+                                            target = ReportTarget.COMMENT,
+                                            targetId = comment.id,
+                                            userId = comment.authorId,
+                                            userName = comment.author?.let { "@${it.username}" } ?: "this person"
+                                        ),
+                                        viewModel = moderation,
+                                        iconSize = 20.dp
+                                    )
+                                }
+                            } else {
+                                null
+                            }
                         )
                     }
                 }
@@ -151,7 +185,12 @@ fun CommentsSheet(
 }
 
 @Composable
-private fun CommentRow(comment: StopComment, canDelete: Boolean, onDelete: () -> Unit) {
+private fun CommentRow(
+    comment: StopComment,
+    canDelete: Boolean,
+    onDelete: () -> Unit,
+    moderation: (@Composable () -> Unit)? = null
+) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.md, vertical = Spacing.sm),
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
@@ -172,6 +211,7 @@ private fun CommentRow(comment: StopComment, canDelete: Boolean, onDelete: () ->
             }
             Text(comment.body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
         }
+        moderation?.invoke()
         if (canDelete) {
             IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
                 Icon(

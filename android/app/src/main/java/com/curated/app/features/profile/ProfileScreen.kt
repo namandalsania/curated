@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.outlined.Logout
+import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.Delete
@@ -60,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
 import com.curated.app.BuildConfig
+import com.curated.app.core.data.ReportTarget
 import com.curated.app.core.format.formatDateRange
 import com.curated.app.core.format.monthYearText
 import com.curated.app.core.format.shortDayText
@@ -76,6 +78,10 @@ import com.curated.app.designsystem.components.ProfileHeaderSkeleton
 import com.curated.app.designsystem.components.SecondaryButton
 import com.curated.app.designsystem.components.SkeletonBox
 import com.curated.app.designsystem.components.Tag
+import com.curated.app.features.moderation.ModerationDialogs
+import com.curated.app.features.moderation.ModerationMenu
+import com.curated.app.features.moderation.ModerationSubject
+import com.curated.app.features.moderation.rememberModerationViewModel
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 
@@ -92,6 +98,9 @@ fun ProfileScreen(
     onResumeDraft: (String) -> Unit,
     onOpenLiveTrip: (String) -> Unit,
     onOpenPlans: () -> Unit,
+    onOpenBlockedAccounts: () -> Unit,
+    /** Leaves someone else's profile - after blocking them, there's nothing to show. */
+    onBack: () -> Unit,
     onSignedOut: () -> Unit
 ) {
     val context = LocalContext.current
@@ -99,6 +108,15 @@ fun ProfileScreen(
     val state by viewModel.state.collectAsState()
     var menuOpen by remember { mutableStateOf(false) }
     var confirmSignOut by remember { mutableStateOf(false) }
+    val moderation = rememberModerationViewModel(key = "profile-$userId")
+    val moderationState by moderation.state.collectAsState()
+    LaunchedEffect(moderationState.blockedUserId) {
+        if (moderationState.blockedUserId != null) {
+            moderation.consumeBlocked()
+            onBack()
+        }
+    }
+    ModerationDialogs(moderation)
 
     // One effect, so returning from an edit loads once, not once per key.
     LaunchedEffect(userId, reloadKey) {
@@ -134,6 +152,14 @@ fun ProfileScreen(
                                     )
                                 }
                                 DropdownMenuItem(
+                                    text = { Text("Blocked accounts") },
+                                    leadingIcon = { Icon(Icons.Outlined.Block, contentDescription = null) },
+                                    onClick = {
+                                        menuOpen = false
+                                        onOpenBlockedAccounts()
+                                    }
+                                )
+                                DropdownMenuItem(
                                     text = { Text("Sign out") },
                                     leadingIcon = { Icon(Icons.AutoMirrored.Outlined.Logout, contentDescription = null) },
                                     onClick = {
@@ -142,6 +168,18 @@ fun ProfileScreen(
                                     }
                                 )
                             }
+                        }
+                    } else {
+                        state.profileUser?.let { user ->
+                            ModerationMenu(
+                                subject = ModerationSubject(
+                                    target = ReportTarget.PROFILE,
+                                    targetId = user.id,
+                                    userId = user.id,
+                                    userName = "@${user.username}"
+                                ),
+                                viewModel = moderation
+                            )
                         }
                     }
                 }

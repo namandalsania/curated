@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.curated.app.core.data.BlockedAccounts
 import com.curated.app.core.map.ClusteredMap
 import com.curated.app.core.map.CuratedPlacePin
 import com.curated.app.core.map.DEFAULT_WORLD_CAMERA
@@ -84,7 +85,10 @@ fun ExploreScreen(
 ) {
     val context = LocalContext.current
     val viewModel: ExploreViewModel = viewModel(factory = ExploreViewModel.factory(context))
-    val state by viewModel.state.collectAsState()
+    val rawState by viewModel.state.collectAsState()
+    // Drops blocked accounts' content already on screen; the database stops serving it.
+    val blocked by BlockedAccounts.ids.collectAsState()
+    val state = rawState.withoutAuthors(blocked)
     val focusManager = LocalFocusManager.current
     var showSearch by remember { mutableStateOf(false) }
     var openPicker by remember { mutableStateOf<PickerFilter?>(null) }

@@ -61,6 +61,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
+import com.curated.app.core.data.ReportTarget
 import com.curated.app.core.data.StopWithPhotos
 import com.curated.app.core.data.TripDaySection
 import com.curated.app.core.format.displayText
@@ -75,6 +76,10 @@ import com.curated.app.designsystem.components.ErrorState
 import com.curated.app.designsystem.components.SkeletonBox
 import com.curated.app.designsystem.components.Tag
 import com.curated.app.designsystem.components.TripCardSkeleton
+import com.curated.app.features.moderation.ModerationDialogs
+import com.curated.app.features.moderation.ModerationMenu
+import com.curated.app.features.moderation.ModerationSubject
+import com.curated.app.features.moderation.rememberModerationViewModel
 import com.curated.app.features.trip.TripVisibilityPicker
 import com.curated.app.features.trip.explanation
 import com.curated.app.features.trip.label
@@ -93,6 +98,16 @@ fun TripDetailScreen(
     var openComments by remember { mutableStateOf<StopWithPhotos?>(null) }
     var showShare by remember { mutableStateOf(false) }
     var showVisibility by remember { mutableStateOf(false) }
+    val moderation = rememberModerationViewModel(key = "trip-$tripId")
+    val moderationState by moderation.state.collectAsState()
+    // Blocking the author hides this trip from you, so there's nothing left to show.
+    LaunchedEffect(moderationState.blockedUserId) {
+        if (moderationState.blockedUserId != null) {
+            moderation.consumeBlocked()
+            onBack()
+        }
+    }
+    ModerationDialogs(moderation)
 
     LaunchedEffect(tripId) { viewModel.load(tripId) }
 
@@ -157,6 +172,18 @@ fun TripDetailScreen(
                         IconButton(onClick = { showShare = true }) {
                             Icon(Icons.Outlined.Share, contentDescription = "Send this trip to someone")
                         }
+                    }
+                    val shown = state.trip
+                    if (shown != null && !state.isOwner) {
+                        ModerationMenu(
+                            subject = ModerationSubject(
+                                target = ReportTarget.TRIP,
+                                targetId = shown.id,
+                                userId = shown.authorId,
+                                userName = shown.author?.let { "@${it.username}" } ?: "this person"
+                            ),
+                            viewModel = moderation
+                        )
                     }
                 }
             )

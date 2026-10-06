@@ -12,6 +12,7 @@ object AppRoutes {
     const val INBOX = "inbox"
     const val SAVED_PLACES = "saved_places"
     const val PLANS = "plans"
+    const val BLOCKED_ACCOUNTS = "blocked_accounts"
     const val PLAN_EDITOR_PATTERN = "plan/{planId}"
 
     /** savedStateHandle key Edit profile sets on the profile entry to make it refresh. */

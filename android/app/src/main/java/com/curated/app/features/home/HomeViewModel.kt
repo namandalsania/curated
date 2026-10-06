@@ -390,3 +390,11 @@ private fun List<Trip>.findOnThisDay(today: LocalDate): OnThisDay? = this
             yearsAgo = today.year - trip.startDate.year
         )
     }
+
+/** This state without [authorIds]' trips and notifications. */
+internal fun HomeUiState.withoutAuthors(authorIds: Set<String>): HomeUiState =
+    if (authorIds.isEmpty()) this
+    else copy(
+        feed = feed.filter { it.trip.authorId !in authorIds },
+        notifications = notifications.filter { it.actorId !in authorIds }
+    )

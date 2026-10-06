@@ -68,3 +68,7 @@ class InboxViewModel(
         }
     }
 }
+
+/** This state without what [authorIds] sent. */
+internal fun InboxState.withoutAuthors(authorIds: Set<String>): InboxState =
+    if (authorIds.isEmpty()) this else copy(shares = shares.filter { it.senderId !in authorIds })
