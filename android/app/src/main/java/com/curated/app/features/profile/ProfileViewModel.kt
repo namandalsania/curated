@@ -146,7 +146,9 @@ class ProfileViewModel(
             } catch (e: Exception) {
                 Log.w(TAG, "Follow toggle failed", e)
                 _state.update {
-                    it.copy(actionError = if (wasFollowing) "Couldn't unfollow. Try again." else "Couldn't follow. Try again.")
+                    // Neutral on purpose: a follow refused because of a block must
+                    // read exactly like any other failure.
+                    it.copy(actionError = if (wasFollowing) "Couldn't unfollow this account." else "Couldn't follow this account.")
                 }
             }
         }

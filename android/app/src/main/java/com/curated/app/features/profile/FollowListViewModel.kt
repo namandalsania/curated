@@ -23,7 +23,9 @@ data class FollowListUiState(
     /** Ids the signed-in viewer follows — drives each row's button, whoever's list this is. */
     val viewerFollowingIds: Set<String> = emptySet(),
     val viewerId: String? = null,
-    val error: String? = null
+    val error: String? = null,
+    /** A follow/unfollow failed - shown above the list, which stays up. */
+    val actionError: String? = null
 )
 
 class FollowListViewModel(
@@ -65,6 +67,7 @@ class FollowListViewModel(
         val viewerId = _state.value.viewerId ?: return
         val wasFollowing = targetId in _state.value.viewerFollowingIds
         setFollowing(targetId, !wasFollowing)
+        _state.update { it.copy(actionError = null) }
 
         viewModelScope.launch {
             try {
@@ -76,6 +79,9 @@ class FollowListViewModel(
                 }
             } catch (e: Exception) {
                 setFollowing(targetId, wasFollowing)
+                // Neutral on purpose: a follow refused because of a block must
+                // read exactly like any other failure.
+                _state.update { it.copy(actionError = if (wasFollowing) "Couldn't unfollow this account." else "Couldn't follow this account.") }
             }
         }
     }

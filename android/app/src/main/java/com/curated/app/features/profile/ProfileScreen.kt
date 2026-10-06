@@ -61,12 +61,14 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
 import com.curated.app.BuildConfig
+import com.curated.app.core.data.BlockedAccounts
 import com.curated.app.core.data.ReportTarget
 import com.curated.app.core.format.formatDateRange
 import com.curated.app.core.format.monthYearText
 import com.curated.app.core.format.shortDayText
 import com.curated.app.core.model.Trip
 import com.curated.app.core.model.TripVisibility
+import com.curated.app.core.model.User
 import com.curated.app.designsystem.CuratedCornerRadius
 import com.curated.app.designsystem.Spacing
 import com.curated.app.designsystem.components.EmptyState
@@ -117,6 +119,14 @@ fun ProfileScreen(
         }
     }
     ModerationDialogs(moderation)
+    val blocked by BlockedAccounts.ids.collectAsState()
+    val isBlockedProfile = !state.isOwnProfile && state.profileUser?.id?.let { it in blocked } == true
+    // Unblocking here brings back the normal profile, with fresh counts and trips.
+    var wasBlocked by remember { mutableStateOf(false) }
+    LaunchedEffect(isBlockedProfile) {
+        if (wasBlocked && !isBlockedProfile) viewModel.load(userId, showSkeleton = false)
+        wasBlocked = isBlockedProfile
+    }
 
     // One effect, so returning from an edit loads once, not once per key.
     LaunchedEffect(userId, reloadKey) {
@@ -169,7 +179,7 @@ fun ProfileScreen(
                                 )
                             }
                         }
-                    } else {
+                    } else if (!isBlockedProfile) {
                         state.profileUser?.let { user ->
                             ModerationMenu(
                                 subject = ModerationSubject(
@@ -202,6 +212,15 @@ fun ProfileScreen(
                     onRetry = { viewModel.load(userId) },
                     modifier = Modifier.align(Alignment.Center)
                 )
+                isBlockedProfile -> state.profileUser?.let { user ->
+                    val moderationState by moderation.state.collectAsState()
+                    BlockedProfile(
+                        user = user,
+                        isUnblocking = moderationState.isUnblocking,
+                        error = moderationState.error,
+                        onUnblock = { moderation.unblock(user.id) }
+                    )
+                }
                 else -> LazyColumn(contentPadding = PaddingValues(bottom = Spacing.xl)) {
                     item {
                         ProfileHeader(
@@ -448,6 +467,48 @@ private fun ProfileHeader(
         state.actionError?.let {
             Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         }
+    }
+}
+
+/**
+ * Someone you've blocked, reached some way other than a list (which leaves
+ * them out). Who they are, that you've blocked them, and the way back -
+ * no counts, trips or Follow.
+ */
+@Composable
+private fun BlockedProfile(user: User, isUnblocking: Boolean, error: String?, onUnblock: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(Spacing.md),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(Spacing.sm)
+    ) {
+        AsyncImage(
+            model = user.avatarUrl,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .padding(top = Spacing.lg)
+                .size(96.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+        )
+        Text(user.displayName, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
+        Text("@${user.username}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            "You've blocked this account",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(top = Spacing.md)
+        )
+        Text(
+            "You won't see each other's trips, comments or notifications.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        SecondaryButton(onClick = onUnblock, enabled = !isUnblocking, modifier = Modifier.fillMaxWidth().padding(top = Spacing.sm)) {
+            Text(if (isUnblocking) "Unblocking…" else "Unblock")
+        }
+        error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
     }
 }
 

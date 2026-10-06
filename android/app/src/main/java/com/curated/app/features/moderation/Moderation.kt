@@ -83,6 +83,7 @@ data class ModerationState(
     val isBlocking: Boolean = false,
     /** Set once a block lands; the screen leaves or reloads on it. */
     val blockedUserId: String? = null,
+    val isUnblocking: Boolean = false,
     val error: String? = null
 )
 
@@ -127,6 +128,20 @@ class ModerationViewModel(private val repository: ModerationRepository) : ViewMo
     }
 
     fun consumeBlocked() = _state.update { it.copy(blockedUserId = null) }
+
+    /** Lifts a block from the blocked profile itself. [BlockedAccounts] updates, so the screen follows. */
+    fun unblock(userId: String) {
+        _state.update { it.copy(isUnblocking = true, error = null) }
+        viewModelScope.launch {
+            try {
+                repository.unblock(userId)
+                _state.update { it.copy(isUnblocking = false) }
+            } catch (e: Exception) {
+                Log.w(TAG, "Couldn't unblock $userId", e)
+                _state.update { it.copy(isUnblocking = false, error = "Couldn't unblock. Try again.") }
+            }
+        }
+    }
 
     companion object {
         private const val TAG = "ModerationViewModel"

@@ -37,6 +37,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
+import com.curated.app.core.data.BlockedAccounts
 import com.curated.app.core.model.User
 import com.curated.app.designsystem.Spacing
 import com.curated.app.designsystem.components.EmptyState
@@ -56,6 +57,9 @@ fun FollowListScreen(
     val context = LocalContext.current
     val viewModel: FollowListViewModel = viewModel(factory = FollowListViewModel.factory(context))
     val state by viewModel.state.collectAsState()
+    // People you've blocked are left out of every list you look at.
+    val blocked by BlockedAccounts.ids.collectAsState()
+    val users = state.users.filter { it.id !in blocked }
 
     LaunchedEffect(userId, kind) { viewModel.load(userId, kind) }
 
@@ -81,14 +85,24 @@ fun FollowListScreen(
                     onRetry = { viewModel.load(userId, kind) },
                     modifier = Modifier.align(Alignment.Center)
                 )
-                state.users.isEmpty() -> EmptyState(
+                users.isEmpty() -> EmptyState(
                     headline = if (kind == FollowListKind.FOLLOWERS) "No followers yet" else "Not following anyone yet",
                     body = "People will show up here as the community grows.",
                     icon = Icons.Outlined.People,
                     modifier = Modifier.align(Alignment.Center)
                 )
                 else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    items(state.users, key = { it.id }) { user ->
+                    state.actionError?.let { message ->
+                        item(key = "action-error") {
+                            Text(
+                                message,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.sm)
+                            )
+                        }
+                    }
+                    items(users, key = { it.id }) { user ->
                         UserRow(
                             user = user,
                             isSelf = user.id == state.viewerId,
