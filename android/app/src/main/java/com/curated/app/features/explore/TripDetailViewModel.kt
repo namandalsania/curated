@@ -57,7 +57,7 @@ class TripDetailViewModel(
                 val isOwner = detail.trip.authorId == authRepository.currentUserId()
                 _state.update { it.copy(isLoading = false, trip = detail.trip, days = detail.days, isOwner = isOwner) }
             } catch (e: Exception) {
-                _state.update { it.copy(isLoading = false, error = e.message ?: "Failed to load trip") }
+                _state.update { it.copy(isLoading = false, error = tripLoadError(e)) }
                 return@launch
             }
             loadSavedStops()
@@ -164,3 +164,12 @@ class TripDetailViewModel(
         }
     }
 }
+
+/**
+ * What to say when a trip won't load. A trip the database no longer returns -
+ * deleted, made private, or its author blocked either way - comes back as an
+ * empty result, which used to surface as "List is empty". It gets one neutral
+ * message, the same whatever the reason, so it never reveals a block.
+ */
+internal fun tripLoadError(e: Throwable): String =
+    if (e is NoSuchElementException) "This trip isn't available." else "Couldn't load this trip. Check your connection and try again."
