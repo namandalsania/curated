@@ -33,6 +33,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import com.curated.app.core.format.Noun
+import com.curated.app.core.format.countText
 import com.curated.app.designsystem.Spacing
 import com.curated.app.designsystem.components.LikeButton
 import com.curated.app.designsystem.pressScale
@@ -236,9 +238,9 @@ private fun tripSubtitle(item: FeedItem): String {
     return buildString {
         append(item.trip.destination)
         append(" · ")
-        append(if (days == 1) "1 day" else "$days days")
+        append(countText(days, Noun.DAY))
         append(" · ")
-        append(if (item.stopCount == 1) "1 stop" else "${item.stopCount} stops")
+        append(countText(item.stopCount, Noun.STOP))
     }
 }
 

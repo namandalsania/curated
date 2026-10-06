@@ -37,6 +37,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.tooling.preview.Preview
+import com.curated.app.core.format.Noun
+import com.curated.app.core.format.countText
 import com.curated.app.core.format.shortDayText
 import com.curated.app.core.model.TripVisibility
 import com.curated.app.designsystem.CuratedTheme
@@ -282,8 +284,8 @@ private fun DateButton(label: String, date: LocalDate?, onClick: () -> Unit, mod
 
 /** "24 photos · 6 stops · 3 without a location" */
 private fun photoSummary(review: ImportReview): String = buildList {
-    add(if (review.photoCount == 1) "1 photo" else "${review.photoCount} photos")
-    add(if (review.stopCount == 1) "1 stop" else "${review.stopCount} stops")
+    add(countText(review.photoCount, Noun.PHOTO))
+    add(countText(review.stopCount, Noun.STOP))
     if (review.withoutLocation > 0) add("${review.withoutLocation} without a location")
 }.joinToString(" · ")
 

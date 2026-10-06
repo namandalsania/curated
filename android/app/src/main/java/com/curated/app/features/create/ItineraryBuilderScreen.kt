@@ -61,6 +61,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.curated.app.core.data.StopWithPhotos
+import com.curated.app.core.format.Noun
+import com.curated.app.core.format.countText
 import com.curated.app.core.format.displayText
 import com.curated.app.core.format.formatDateRange
 import com.curated.app.core.format.label
@@ -397,7 +399,7 @@ internal fun StopRow(
                 listOfNotNull(
                     stop.arrivalTime?.displayText(),
                     stop.category.label(),
-                    item.photoUrls.size.takeIf { it > 0 }?.let { if (it == 1) "1 photo" else "$it photos" }
+                    item.photoUrls.size.takeIf { it > 0 }?.let { countText(it, Noun.PHOTO) }
                 ).joinToString(" · "),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

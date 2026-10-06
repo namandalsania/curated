@@ -42,6 +42,8 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.curated.app.core.format.Noun
+import com.curated.app.core.format.countText
 import com.curated.app.core.model.PlanRole
 import com.curated.app.designsystem.Spacing
 import com.curated.app.designsystem.components.EmptyState
@@ -179,9 +181,9 @@ private fun PlanCard(listing: PlanListing, onClick: () -> Unit) {
             )
             Text(
                 buildString {
-                    append(if (listing.placeCount == 1) "1 place" else "${listing.placeCount} places")
+                    append(countText(listing.placeCount, Noun.PLACE))
                     append(" · ")
-                    append(if (listing.plan.dayCount == 1) "1 day" else "${listing.plan.dayCount} days")
+                    append(countText(listing.plan.dayCount, Noun.DAY))
                     // Your own plans don't need a role badge; shared ones do.
                     if (listing.role != PlanRole.OWNER) append(" · ").append(listing.role.label)
                 },

@@ -22,6 +22,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.curated.app.core.format.Noun
+import com.curated.app.core.format.countText
 import com.curated.app.core.format.formatDateRange
 import com.curated.app.core.model.TripVisibility
 import com.curated.app.designsystem.Spacing
@@ -98,8 +100,7 @@ fun PublishScreen(
                         )
                     }
                     Text(
-                        "${if (state.stopCount == 1) "1 place" else "${state.stopCount} places"} across " +
-                            if (state.dayCount == 1) "1 day" else "${state.dayCount} days",
+                        "${countText(state.stopCount, Noun.PLACE)} across ${countText(state.dayCount, Noun.DAY)}",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

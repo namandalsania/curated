@@ -64,6 +64,8 @@ import coil3.compose.AsyncImage
 import com.curated.app.core.data.ReportTarget
 import com.curated.app.core.data.StopWithPhotos
 import com.curated.app.core.data.TripDaySection
+import com.curated.app.core.format.Noun
+import com.curated.app.core.format.countText
 import com.curated.app.core.format.displayText
 import com.curated.app.core.format.formatDateRange
 import com.curated.app.core.format.label
@@ -261,7 +263,7 @@ private fun TripHeader(
             buildString {
                 append(formatDateRange(trip.startDate, trip.endDate))
                 if (dayCount > 0) append(" · $dayCount ${if (dayCount == 1) "day" else "days"}")
-                trip.stopCount?.let { append(" · $it ${if (it == 1) "stop" else "stops"}") }
+                trip.stopCount?.let { append(" · ${countText(it, Noun.STOP)}") }
             },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -451,8 +453,7 @@ private fun StopCard(
                 Text(
                     when (commentCount) {
                         0 -> "Comment"
-                        1 -> "1 comment"
-                        else -> "$commentCount comments"
+                        else -> countText(commentCount, Noun.COMMENT)
                     },
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

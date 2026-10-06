@@ -65,6 +65,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
+import com.curated.app.core.format.Noun
+import com.curated.app.core.format.countText
 import com.curated.app.core.format.label
 import com.curated.app.core.geocode.PlaceSearchService
 import com.curated.app.core.geocode.PlaceSuggestion
@@ -287,10 +289,10 @@ private fun PlanSummary(
     Column(modifier = Modifier.padding(top = Spacing.xs)) {
         Text(
             buildString {
-                append(if (placeCount == 1) "1 place" else "$placeCount places")
+                append(countText(placeCount, Noun.PLACE))
                 append(" · ")
-                append(if (dayCount == 1) "1 day" else "$dayCount days")
-                if (people > 1) append(" · ").append("$people people")
+                append(countText(dayCount, Noun.DAY))
+                if (people > 1) append(" · ").append(countText(people, Noun.PERSON))
             },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant

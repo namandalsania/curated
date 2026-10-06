@@ -36,6 +36,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.curated.app.core.data.LikeSummary
+import com.curated.app.core.format.Noun
+import com.curated.app.core.format.countText
 import com.curated.app.core.model.Trip
 import com.curated.app.core.model.TripStatus
 import com.curated.app.core.model.User
@@ -133,7 +135,7 @@ fun ExploreSheetContent(
         if (all.isNotEmpty()) {
             item(key = "all") {
                 Text(
-                    if (all.size == 1) "1 trip" else "All ${all.size} trips",
+                    if (all.size == 1) "1 trip" else "All ${countText(all.size, Noun.TRIP)}",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.sm)
@@ -177,8 +179,7 @@ private fun NoMatches(hasFilters: Boolean, query: String, onClearFilters: () -> 
 
 private fun inViewHeadline(count: Int, isLoading: Boolean): String = when {
     isLoading && count == 0 -> "Finding trips…"
-    count == 1 -> "1 trip in this area"
-    else -> "$count trips in this area"
+    else -> "${countText(count, Noun.TRIP)} in this area"
 }
 
 /** A trip in the peek row: 4:3 cover, title, "City · N days · N stops", author. */
@@ -243,8 +244,8 @@ internal fun sheetCardMeta(item: FeedItem): String {
     val days = item.trip.lengthInDays()
     return listOf(
         item.trip.destination.substringBefore(',').trim(),
-        if (days == 1) "1 day" else "$days days",
-        if (item.stopCount == 1) "1 stop" else "${item.stopCount} stops"
+        countText(days, Noun.DAY),
+        countText(item.stopCount, Noun.STOP)
     ).filter { it.isNotBlank() }.joinToString(" · ")
 }
 

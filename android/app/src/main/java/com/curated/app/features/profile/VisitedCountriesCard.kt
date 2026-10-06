@@ -26,6 +26,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.curated.app.core.format.Noun
+import com.curated.app.core.format.countText
 import com.curated.app.core.format.flagEmoji
 import com.curated.app.core.map.CountryDetailMap
 import com.curated.app.core.map.CountryVisit
@@ -192,7 +194,7 @@ private fun CountrySheetContent(map: WorldMapData, visit: CountryVisit) {
                             modifier = Modifier.weight(1f)
                         )
                         Text(
-                            if (city.tripCount == 1) "1 trip" else "${city.tripCount} trips",
+                            countText(city.tripCount, Noun.TRIP),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

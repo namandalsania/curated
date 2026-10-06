@@ -55,6 +55,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.curated.app.core.data.StopWithPhotos
+import com.curated.app.core.format.Noun
+import com.curated.app.core.format.countText
 import com.curated.app.core.format.shortDayText
 import com.curated.app.core.model.Stop
 import com.curated.app.core.model.StopCategory
@@ -388,8 +390,8 @@ private fun LiveDayCard(
             if (stops.isNotEmpty()) {
                 Text(
                     listOf(
-                        if (stops.size == 1) "1 stop" else "${stops.size} stops",
-                        if (photos.size == 1) "1 photo" else "${photos.size} photos"
+                        countText(stops.size, Noun.STOP),
+                        countText(photos.size, Noun.PHOTO)
                     ).joinToString(" · "),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface

@@ -46,6 +46,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
 import com.curated.app.core.data.BlockedAccounts
 import com.curated.app.core.data.ReportTarget
+import com.curated.app.core.format.Noun
+import com.curated.app.core.format.countText
 import com.curated.app.core.format.shortDayText
 import com.curated.app.core.model.StopComment
 import com.curated.app.core.model.User
@@ -106,7 +108,7 @@ fun CommentsSheet(
                 modifier = Modifier.padding(horizontal = Spacing.md)
             )
             Text(
-                if (comments.isEmpty()) "No comments yet" else "${comments.size} comments",
+                if (comments.isEmpty()) "No comments yet" else countText(comments.size, Noun.COMMENT),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.xs)
