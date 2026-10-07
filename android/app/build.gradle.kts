@@ -116,4 +116,5 @@ dependencies {
     implementation(libs.androidx.exifinterface)
 
     testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
 }
