@@ -1,6 +1,6 @@
 """Renders the legal Markdown in this folder to HTML pages in docs/.
 
-    python docs/legal/build.py
+    python docs-internal/build-legal.py
 
 The Markdown files are the source of truth; edit them, then re-run this and
 commit both. Standard library only. Supports the subset the documents use:
@@ -15,8 +15,9 @@ import html
 import re
 from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
-OUT = HERE.parent  # docs/
+ROOT = Path(__file__).resolve().parent.parent
+HERE = ROOT / "docs" / "legal"  # Markdown sources
+OUT = ROOT / "docs"  # served by GitHub Pages
 
 PAGES = {
     "privacy-policy.md": "privacy.html",
@@ -176,7 +177,7 @@ def page(title: str, body: str, source: str) -> str:
 </head>
 <body>
 <main>
-<!-- Generated from docs/legal/{source} by docs/legal/build.py. Edit the Markdown, not this file. -->
+<!-- Generated from docs/legal/{source} by docs-internal/build-legal.py. Edit the Markdown, not this file. -->
 {body}
 <footer>Curated · {html.escape(title)} · <a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a> · <a href="delete-account.html">Delete your account</a></footer>
 </main>
