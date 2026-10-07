@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Delete your Curated account</title>
+  <meta name="description" content="How to delete your Curated account and its data, in the app or by email.">
+  <style>
+    :root {
+      --bg: #f6f1ea;
+      --text: #2a2420;
+      --muted: #6b625a;
+      --accent: #a65a3e;
+      --line: #e3d9cc;
+      --card: #fbf8f4;
+      --warn-bg: #fff4d6;
+      --warn-text: #6b4e00;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1d1a17;
+        --text: #efe8df;
+        --muted: #b3a99e;
+        --accent: #e0957a;
+        --line: #3a342e;
+        --card: #24201c;
+        --warn-bg: #3a3014;
+        --warn-text: #f3d98a;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    main { max-width: 680px; margin: 0 auto; padding: 40px 16px 64px; }
+    h1 { font-size: 1.9rem; line-height: 1.2; margin: 0 0 8px; }
+    h2 { font-size: 1.2rem; margin: 32px 0 8px; }
+    p, li { color: var(--text); }
+    .lede { color: var(--muted); margin-top: 0; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 16px 20px;
+    }
+    ol, ul { padding-left: 1.3em; }
+    li + li { margin-top: 4px; }
+    a { color: var(--accent); }
+    .placeholder {
+      background: var(--warn-bg);
+      color: var(--warn-text);
+      border-radius: 6px;
+      padding: 1px 6px;
+      font-weight: 600;
+    }
+    footer { margin-top: 40px; color: var(--muted); font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Delete your Curated account</h1>
+  <p class="lede">You can delete your account and its data at any time, from the app or by email.</p>
+
+  <h2>In the app</h2>
+  <div class="card">
+    <ol>
+      <li>Open Curated and go to your <strong>Profile</strong>.</li>
+      <li>Tap the <strong>⋮</strong> menu, then <strong>Settings</strong>.</li>
+      <li>Tap <strong>Delete account</strong>.</li>
+      <li>Enter your password, type <strong>DELETE</strong>, and tap <strong>Delete my account</strong>.</li>
+    </ol>
+    <p>Deletion happens straight away and can't be undone. You're signed out when it's done.</p>
+  </div>
+
+  <h2>By email</h2>
+  <div class="card">
+    <p>
+      If you can't use the app, email
+      <!-- PLACEHOLDER: replace with the real contact address before publishing. -->
+      <span class="placeholder">[CONTACT EMAIL — TO BE ADDED]</span>
+      from the address you signed up with, with the subject <strong>"Delete my account"</strong>.
+      Include your username if you remember it.
+    </p>
+    <p>
+      To protect your account, we only act on requests from the email address on the account. We'll
+      confirm by email when your account has been deleted.
+    </p>
+  </div>
+
+  <h2>What's deleted</h2>
+  <ul>
+    <li>Your profile, username and profile photo</li>
+    <li>Your trips — live, finished and drafts — with their days, places and photos</li>
+    <li>Your comments, likes and saved places</li>
+    <li>Your plans, and your membership of plans others shared with you</li>
+    <li>Your follows, notifications, and trips sent to or by you</li>
+    <li>People you blocked, and reports you filed</li>
+  </ul>
+
+  <h2>What's kept</h2>
+  <ul>
+    <li>Places other people saved from your trips stay in their own lists, without your name or photos.</li>
+    <li>Reports other people made about your content are kept for safety review, marked as deleted.</li>
+  </ul>
+
+  <footer>Curated · closed beta</footer>
+</main>
+</body>
+</html>

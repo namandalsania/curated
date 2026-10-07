@@ -107,7 +107,7 @@ class BlockedAccountsViewModel(private val repository: ModerationRepository) : V
     }
 }
 
-/** Everyone you've blocked, each with Unblock. Reached from your profile's menu. */
+/** Everyone you've blocked, each with Unblock. Reached from Settings. */
 @Composable
 fun BlockedAccountsScreen(onBack: () -> Unit) {
     val context = LocalContext.current

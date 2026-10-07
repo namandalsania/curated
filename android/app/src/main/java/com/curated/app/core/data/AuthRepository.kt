@@ -3,6 +3,7 @@ package com.curated.app.core.data
 import com.curated.app.core.model.User
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.OtpType
+import io.github.jan.supabase.auth.SignOutScope
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.status.SessionStatus
 import io.github.jan.supabase.auth.providers.builtin.Email
@@ -92,6 +93,17 @@ class AuthRepository(private val client: SupabaseClient) {
 
     suspend fun signOut() {
         client.auth.signOut()
+    }
+
+    /** The signed-in account's email, for asking for its password again. */
+    fun currentEmail(): String? = client.auth.currentUserOrNull()?.email
+
+    /**
+     * Forgets the session on this device only. After the account is deleted
+     * the server has nothing to sign out of, so a normal sign-out would fail.
+     */
+    suspend fun signOutLocally() {
+        client.auth.signOut(SignOutScope.LOCAL)
     }
 
     suspend fun fetchProfile(userId: String): User? =

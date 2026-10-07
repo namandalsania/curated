@@ -25,12 +25,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
-import androidx.compose.material.icons.automirrored.outlined.Logout
-import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material3.AlertDialog
@@ -100,16 +99,14 @@ fun ProfileScreen(
     onResumeDraft: (String) -> Unit,
     onOpenLiveTrip: (String) -> Unit,
     onOpenPlans: () -> Unit,
-    onOpenBlockedAccounts: () -> Unit,
+    onOpenSettings: () -> Unit,
     /** Leaves someone else's profile - after blocking them, there's nothing to show. */
-    onBack: () -> Unit,
-    onSignedOut: () -> Unit
+    onBack: () -> Unit
 ) {
     val context = LocalContext.current
     val viewModel: ProfileViewModel = viewModel(factory = ProfileViewModel.factory(context))
     val state by viewModel.state.collectAsState()
     var menuOpen by remember { mutableStateOf(false) }
-    var confirmSignOut by remember { mutableStateOf(false) }
     val moderation = rememberModerationViewModel(key = "profile-$userId")
     val moderationState by moderation.state.collectAsState()
     LaunchedEffect(moderationState.blockedUserId) {
@@ -162,19 +159,11 @@ fun ProfileScreen(
                                     )
                                 }
                                 DropdownMenuItem(
-                                    text = { Text("Blocked accounts") },
-                                    leadingIcon = { Icon(Icons.Outlined.Block, contentDescription = null) },
+                                    text = { Text("Settings") },
+                                    leadingIcon = { Icon(Icons.Outlined.Settings, contentDescription = null) },
                                     onClick = {
                                         menuOpen = false
-                                        onOpenBlockedAccounts()
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Sign out") },
-                                    leadingIcon = { Icon(Icons.AutoMirrored.Outlined.Logout, contentDescription = null) },
-                                    onClick = {
-                                        menuOpen = false
-                                        confirmSignOut = true
+                                        onOpenSettings()
                                     }
                                 )
                             }
@@ -345,25 +334,6 @@ fun ProfileScreen(
                 }
             }
         }
-    }
-
-    if (confirmSignOut) {
-        AlertDialog(
-            onDismissRequest = { confirmSignOut = false },
-            title = { Text("Sign out?") },
-            text = { Text("You'll need your email and password to sign back in.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmSignOut = false
-                    viewModel.signOut()
-                    onSignedOut()
-                }) { Text("Sign out") }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmSignOut = false }) { Text("Cancel") }
-            },
-            containerColor = MaterialTheme.colorScheme.surface
-        )
     }
 }
 

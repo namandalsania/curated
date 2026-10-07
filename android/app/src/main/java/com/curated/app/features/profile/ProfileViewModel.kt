@@ -165,10 +165,6 @@ class ProfileViewModel(
         }
     }
 
-    fun signOut() {
-        viewModelScope.launch { authRepository.signOut() }
-    }
-
     companion object {
         private const val TAG = "ProfileViewModel"
 

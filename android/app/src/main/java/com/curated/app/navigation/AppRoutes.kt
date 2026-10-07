@@ -13,6 +13,8 @@ object AppRoutes {
     const val SAVED_PLACES = "saved_places"
     const val PLANS = "plans"
     const val BLOCKED_ACCOUNTS = "blocked_accounts"
+    const val SETTINGS = "settings"
+    const val DELETE_ACCOUNT = "delete_account"
     const val PLAN_EDITOR_PATTERN = "plan/{planId}"
 
     /** savedStateHandle key Edit profile sets on the profile entry to make it refresh. */

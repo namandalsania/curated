@@ -53,6 +53,8 @@ import com.curated.app.features.profile.EditProfileScreen
 import com.curated.app.features.profile.FollowListKind
 import com.curated.app.features.profile.FollowListScreen
 import com.curated.app.features.profile.ProfileScreen
+import com.curated.app.features.settings.DeleteAccountScreen
+import com.curated.app.features.settings.SettingsScreen
 
 @Composable
 fun AppNavHost(currentUserId: String) {
@@ -191,13 +193,22 @@ fun AppNavHost(currentUserId: String) {
                     onResumeDraft = { tripId -> navController.navigate(CreateRoutes.resumeDraft(tripId)) },
                     onOpenLiveTrip = { tripId -> navController.navigate(CreateRoutes.live(tripId)) },
                     onOpenPlans = { navController.navigate(AppRoutes.PLANS) { launchSingleTop = true } },
-                    onOpenBlockedAccounts = { navController.navigate(AppRoutes.BLOCKED_ACCOUNTS) { launchSingleTop = true } },
-                    onBack = { navController.popBackStack() },
-                    onSignedOut = {}
+                    onOpenSettings = { navController.navigate(AppRoutes.SETTINGS) { launchSingleTop = true } },
+                    onBack = { navController.popBackStack() }
                 )
             }
             composable(AppRoutes.BLOCKED_ACCOUNTS) {
                 BlockedAccountsScreen(onBack = { navController.popBackStack() })
+            }
+            composable(AppRoutes.SETTINGS) {
+                SettingsScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenBlockedAccounts = { navController.navigate(AppRoutes.BLOCKED_ACCOUNTS) { launchSingleTop = true } },
+                    onDeleteAccount = { navController.navigate(AppRoutes.DELETE_ACCOUNT) { launchSingleTop = true } }
+                )
+            }
+            composable(AppRoutes.DELETE_ACCOUNT) {
+                DeleteAccountScreen(onBack = { navController.popBackStack() })
             }
             composable(AppRoutes.INBOX) {
                 InboxScreen(
