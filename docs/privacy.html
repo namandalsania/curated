@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Curated Privacy Policy (draft)</title>
+  <style>
+    :root {
+      --bg: #f6f1ea; --text: #2a2420; --muted: #6b625a; --accent: #a65a3e;
+      --line: #e3d9cc; --card: #fbf8f4; --warn-bg: #fff4d6; --warn-text: #6b4e00;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1d1a17; --text: #efe8df; --muted: #b3a99e; --accent: #e0957a;
+        --line: #3a342e; --card: #24201c; --warn-bg: #3a3014; --warn-text: #f3d98a;
+      }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text);
+           font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    main { max-width: 720px; margin: 0 auto; padding: 32px 16px 64px; }
+    h1 { font-size: 1.9rem; line-height: 1.2; margin: 24px 0 8px; }
+    h2 { font-size: 1.3rem; margin: 36px 0 8px; padding-top: 12px; border-top: 1px solid var(--line); }
+    h3 { font-size: 1.05rem; margin: 24px 0 6px; }
+    a { color: var(--accent); }
+    ul { padding-left: 1.3em; }
+    li + li { margin-top: 4px; }
+    blockquote { margin: 0; padding: 12px 16px; border-radius: 12px;
+                 background: var(--warn-bg); color: var(--warn-text); }
+    blockquote p { color: var(--warn-text); margin: 0; }
+    .table { overflow-x: auto; margin: 12px 0; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+    th, td { text-align: left; vertical-align: top; padding: 8px 10px; border: 1px solid var(--line); }
+    th { background: var(--card); }
+    code { font-size: 0.9em; background: var(--card); padding: 1px 4px; border-radius: 4px; }
+    .placeholder { background: var(--warn-bg); color: var(--warn-text); border-radius: 4px;
+                   padding: 0 4px; font-weight: 600; }
+    footer { margin-top: 40px; color: var(--muted); font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+<main>
+<!-- Generated from docs/legal/privacy-policy.md by docs/legal/build.py. Edit the Markdown, not this file. -->
+<blockquote><p><strong>DRAFT: not legal advice.</strong> This draft was written from how the app is built on 6 October 2026. It must be reviewed by the owner (and ideally a lawyer) before it is published or relied on. Text in <strong><span class="placeholder">[PLACEHOLDER: …]</span></strong> must be filled in.</p></blockquote>
+<h1>Curated Privacy Policy</h1>
+<p><strong>Last updated:</strong> <span class="placeholder">[PLACEHOLDER: publication date]</span></p>
+<p>Curated is an app for recording trips day by day and sharing them. This policy explains what information Curated collects, how it's used, who can see it, and how to delete it. It covers the Curated Android app and the pages it links to.</p>
+<p>Curated is run by <strong><span class="placeholder">[PLACEHOLDER: legal name of the operator - person or company]</span></strong> ("we", "us"). You can contact us at <strong><span class="placeholder">[PLACEHOLDER: contact email]</span></strong>.</p>
+<h2>The short version</h2>
+<ul><li>You need an account (email and password) to use Curated.</li><li>Trips you make <strong>public</strong> can be seen by anyone. <strong>Unlisted</strong> trips can be seen by anyone who has the link. <strong>Private</strong> trips are only for you.</li><li>To build a trip from your photos, the app reads the location and time stored in each photo <strong>on your phone</strong>. Photos you add are uploaded <strong>as they are, including that information</strong> (see "Photos and their metadata").</li><li>We use Supabase to store your account and content, Google for maps and place names, and Firebase Crashlytics to learn about crashes.</li><li>We don't sell your information or show ads.</li><li>You can delete your account, and almost everything in it, at any time from the app.</li></ul>
+<h2>What we collect</h2>
+<h3>Your account</h3>
+<div class="table"><table><thead><tr><th>What</th><th>Why</th><th>Required?</th></tr></thead><tbody><tr><td>Email address</td><td>Signing in, confirming your account, resetting your password</td><td>Yes</td></tr><tr><td>Password</td><td>Signing in. It's stored by our authentication provider, Supabase, as a one-way hash; we never see it.</td><td>Yes</td></tr><tr><td>Name and username</td><td>Shown on your profile and next to what you post</td><td>Yes</td></tr><tr><td>Profile photo and bio</td><td>Shown on your profile</td><td>No</td></tr></tbody></table></div>
+<h3>What you create</h3>
+<ul><li><strong>Trips:</strong> title, destination, dates, optional budget and season tags, visibility (public, unlisted or private), and whether the trip is a draft, live or finished.</li><li><strong>Days and places (stops):</strong> for each place, its name, category and map position, and anything you add: a caption, tips, cost, and the time you arrived.</li><li><strong>Photos</strong> you add to places, and the time each was taken (see below).</li><li><strong>Comments</strong> you write on places in other people's trips.</li><li><strong>Likes, saved trips, saved places and follows.</strong></li><li><strong>Plans:</strong> places you arrange into your own days, and the people you invite to a plan.</li><li><strong>Trips you send to other people</strong>, with any note you add.</li><li><strong>Reports</strong> you file (the reason, and an optional note) and <strong>accounts you block</strong>.</li></ul>
+<h3>Photos and their metadata</h3>
+<p>When you build a trip from your photos, the app reads two things stored inside each photo: <strong>where it was taken</strong> (GPS coordinates) and <strong>when</strong> (the date and time). It reads them <strong>on your phone</strong> and uses them to group your photos into days and places. To do this, the app asks Android for permission to read the location stored in photos ("access media location"). The app never asks for, and never reads, your phone's own current location.</p>
+<p>The photos you add are then <strong>uploaded as the original files, with their stored metadata intact</strong>: the GPS position, the date and time, and anything else your camera recorded (for example, the phone model). The positions of your places are also saved separately so they can be shown on maps.</p>
+<p><span class="placeholder">[PLACEHOLDER: decide whether to strip photo metadata before upload. If it is stripped, replace the paragraph above with: "Before a photo is uploaded, the app removes its stored metadata. Only the photo itself, and the place and time you confirmed, are saved."]</span></p>
+<h3>Information collected automatically</h3>
+<ul><li><strong>Crash reports.</strong> If the app crashes, Firebase Crashlytics (a Google service) receives a report: what went wrong in the app's code, the app version, your phone model and Android version, and technical state such as free memory and screen orientation. It also uses an identifier for this installation of the app, so repeated crashes on one phone can be grouped. Crash reports don't include your name, email or content.</li><li><strong>Service logs.</strong> Like most online services, our providers record technical details of requests to them, such as the IP address and time, for security and to keep the service running.</li></ul>
+<p>We do <strong>not</strong> use advertising identifiers, analytics or tracking for advertising.</p>
+<h2>How we use it</h2>
+<ul><li>To run the app: your account, your trips, the feeds, maps, search, notifications, comments, sharing and plans.</li><li>To keep people safe: to act on reports, and to apply blocks.</li><li>To fix problems: crash reports and service logs.</li><li>To contact you about your account (for example, confirmation and password reset emails).</li></ul>
+<h2>Who can see what</h2>
+<h3>Your profile</h3>
+<p>Your name, username, profile photo, bio, and how many people you follow and are followed by are <strong>public</strong>. Anyone using Curated can see them, and so can the lists of who you follow and who follows you.</p>
+<h3>Your trips</h3>
+<p>You choose this for each trip:</p>
+<ul><li><strong>Public:</strong> shown in Explore, search and your followers' feeds, and on your profile. Anyone can open it.</li><li><strong>Unlisted:</strong> not shown in Explore, search or feeds, but <strong>anyone who has the link can open it</strong>. Unlisted isn't secret: treat it like an unlisted video.</li><li><strong>Private:</strong> only you can see it.</li></ul>
+<p>Drafts are only visible to you. While a trip is live, others see only the days you've posted.</p>
+<p>Comments, likes and the places you've saved from other people's trips are visible to the people who can see that trip.</p>
+<p>Photo files are stored at long, unguessable web addresses. Anyone who has a photo's address can open it, whatever the trip's visibility, even though the app only shows photos to the people allowed to see the trip.</p>
+<h3>Blocking</h3>
+<p>If you block someone, neither of you can see the other's trips, comments or notifications, any follows between you are removed, and neither of you can follow, comment on or send trips to the other. The person isn't told. A blocked person can still see your profile's name, username, photo, bio and follower counts, but not your trips.</p>
+<h3>Reporting</h3>
+<p>You can report a trip, place, comment or profile. Reports go to <strong><span class="placeholder">[PLACEHOLDER: who reviews reports, e.g. "the Curated team"]</span></strong>, not to the person you reported, and they aren't told who reported them.</p>
+<h2>Who we share it with</h2>
+<p>We don't sell your information. We share it only with these service providers, who process it to run Curated:</p>
+<div class="table"><table><thead><tr><th>Provider</th><th>What for</th><th>What they receive</th></tr></thead><tbody><tr><td><strong>Supabase</strong></td><td>Stores your account, content and photos; sends account emails</td><td>Everything you create, your email, service logs</td></tr><tr><td><strong>Google Maps Platform</strong>: Maps SDK and Places API</td><td>Showing maps; finding place names and suggestions when you search or build a trip</td><td>Map areas you view; the text you type into place search; the map position of places being named</td></tr><tr><td><strong>Your phone's geocoding service</strong> (provided by Google on most Android phones)</td><td>Turning a map position into a city and country name</td><td>Map positions of your places</td></tr><tr><td><strong>Firebase Crashlytics</strong> (Google)</td><td>Crash reports</td><td>The crash information described above</td></tr></tbody></table></div>
+<p>Google's use of this information is covered by the <a href="https://policies.google.com/privacy">Google Privacy Policy</a>. Maps are provided under the <a href="https://maps.google.com/help/terms_maps/">Google Maps/Google Earth Additional Terms of Service</a>. See also <a href="https://supabase.com/privacy">Supabase's privacy policy</a> and <a href="https://firebase.google.com/support/privacy">Firebase privacy information</a>.</p>
+<p>Your information is stored on Supabase's servers in <strong><span class="placeholder">[PLACEHOLDER: Supabase project region, e.g. "the EU (Frankfurt)"]</span></strong>. Our providers may process it in other countries.</p>
+<p>We may also disclose information if the law requires it, or to protect people from harm.</p>
+<h2>How long we keep it</h2>
+<ul><li><strong>While your account exists</strong>, we keep what you've created, until you delete it (you can delete trips, comments and more at any time) or delete your account.</li><li><strong>Crash reports</strong> are kept by Firebase Crashlytics for about 90 days.</li><li><strong>Service logs</strong> are kept by our providers for a limited period <span class="placeholder">[PLACEHOLDER: check the Supabase plan's log retention]</span>.</li><li><strong>Backups:</strong> deleted information can remain in our database backups for up to <strong><span class="placeholder">[PLACEHOLDER: backup retention period for the Supabase plan]</span></strong> before it's overwritten.</li><li><strong>Reports about content</strong> are kept after that content or account is deleted, for <strong><span class="placeholder">[PLACEHOLDER: report retention period, e.g. "up to one year"]</span></strong>, so we can deal with abuse.</li></ul>
+<h2>Deleting your account</h2>
+<p>You can delete your account at any time: <strong>Profile → ⋮ → Settings → Delete account</strong>, then enter your password and type DELETE. It happens straight away and can't be undone. If you can't use the app, see <a href="delete-account.html">how to request deletion by email</a>.</p>
+<p><strong>What's deleted:</strong></p>
+<ul><li>Your account, email and password, name, username, bio and profile photo.</li><li>All your trips (drafts, live and finished), with their days, places and photo files.</li><li>Your comments, likes, saved trips and saved places.</li><li>Your plans, and your membership of plans other people shared with you.</li><li>Your follows in both directions.</li><li>Notifications you received, and notifications your actions created for other people (for example, "… started following you").</li><li>Trips you sent or were sent.</li><li>Comments, likes and saves that other people made on your trips.</li><li>People you blocked and people who blocked you (the block records), and reports you filed.</li></ul>
+<p><strong>What stays:</strong></p>
+<ul><li><strong>Places other people saved from your trips</strong> stay in their lists and plans, because they belong to those people. Your name, your trip's title and your photo are removed from them; the place's name, type and position remain.<ul><li><strong>One exception:</strong> if someone saved a place from a trip that you had <em>already deleted</em> before deleting your account, that saved copy can no longer be linked back to you, so it keeps the name it showed when it was saved (your display name at that time).</li></ul></li><li><strong>Reports other people made about your profile or content</strong> are kept, marked as being about something that's been deleted, for the period above.</li><li>Copies in <strong>backups</strong> until they're overwritten (see above).</li></ul>
+<h2>Your rights</h2>
+<p>Depending on where you live, you may have rights to access, correct, export or delete your information, or to object to how it's used. You can see and edit most of it in the app, and delete it as described above. For anything else, contact us at <strong><span class="placeholder">[PLACEHOLDER: contact email]</span></strong>. <span class="placeholder">[PLACEHOLDER: add region-specific sections if required, e.g. GDPR legal bases or California notices.]</span></p>
+<h2>Children</h2>
+<p>Curated is not for children under <strong><span class="placeholder">[PLACEHOLDER: minimum age, e.g. 13, or 16 in some countries]</span></strong>. If you believe a child has created an account, contact us and we'll delete it.</p>
+<h2>Security</h2>
+<p>Information sent between the app and our providers is encrypted in transit (HTTPS). Access to your content is controlled by database rules that check who is asking. No system is perfectly secure; if we learn of a breach affecting your information, we'll tell you as the law requires.</p>
+<h2>Changes</h2>
+<p>If we change this policy, we'll update the date at the top, and tell you in the app if the change is significant.</p>
+<h2>Contact</h2>
+<p><strong><span class="placeholder">[PLACEHOLDER: legal name of the operator]</span></strong><br>
+<strong><span class="placeholder">[PLACEHOLDER: contact email]</span></strong><br>
+<strong><span class="placeholder">[PLACEHOLDER: postal address, if required]</span></strong></p>
+<footer>Curated · Privacy Policy · <a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a> · <a href="delete-account.html">Delete your account</a></footer>
+</main>
+</body>
+</html>

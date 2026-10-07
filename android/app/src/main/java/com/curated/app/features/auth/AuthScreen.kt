@@ -51,17 +51,25 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentType
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.curated.app.R
+import com.curated.app.core.legal.LegalLinks
 import com.curated.app.designsystem.CuratedTheme
 import com.curated.app.designsystem.Spacing
 import com.curated.app.designsystem.components.PrimaryButton
@@ -233,6 +241,7 @@ private fun SignUpPage(
 
         Messages(state)
         SubmitButton("Create account", isLoading = state.isSubmitting, onClick = { onSubmit(name, username, password) })
+        AgreementLine()
         SwitchLine("Already have an account?", "Sign in", onSwitchToSignIn)
     }
 }
@@ -546,6 +555,28 @@ private fun SubmitButton(label: String, isLoading: Boolean, onClick: () -> Unit)
             Text(label)
         }
     }
+}
+
+/** "By creating an account, you agree to the Terms of Use and Privacy Policy." Both open in the browser. */
+@Composable
+private fun AgreementLine() {
+    val linkStyle = TextLinkStyles(
+        style = SpanStyle(color = MaterialTheme.colorScheme.primary, textDecoration = TextDecoration.Underline)
+    )
+    val text = buildAnnotatedString {
+        append("By creating an account, you agree to the ")
+        withLink(LinkAnnotation.Url(LegalLinks.TERMS_OF_USE, linkStyle)) { append("Terms of Use") }
+        append(" and ")
+        withLink(LinkAnnotation.Url(LegalLinks.PRIVACY_POLICY, linkStyle)) { append("Privacy Policy") }
+        append(".")
+    }
+    Text(
+        text,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth()
+    )
 }
 
 @Composable

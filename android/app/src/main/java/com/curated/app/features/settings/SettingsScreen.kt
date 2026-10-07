@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.outlined.Logout
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Description
@@ -24,16 +25,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -41,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -50,6 +48,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.curated.app.core.data.AuthRepository
 import com.curated.app.core.data.BlockedAccounts
 import com.curated.app.core.data.SupabaseProvider
+import com.curated.app.core.legal.LegalLinks
 import com.curated.app.designsystem.CuratedTheme
 import com.curated.app.designsystem.Spacing
 import com.curated.app.designsystem.components.HairlineCard
@@ -99,12 +98,8 @@ private fun SettingsContent(
     onSignOut: () -> Unit
 ) {
     var confirmSignOut by rememberSaveable { mutableStateOf(false) }
-    val snackbar = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
-    // Placeholders until the policy documents are published.
-    val showComingSoon: () -> Unit = {
-        scope.launch { snackbar.showSnackbar("This will be available before launch.") }
-    }
+    // Opens in the browser; the pages are on the web so they can be linked from Play too.
+    val uriHandler = LocalUriHandler.current
 
     Scaffold(
         topBar = {
@@ -116,8 +111,7 @@ private fun SettingsContent(
                     }
                 }
             )
-        },
-        snackbarHost = { SnackbarHost(snackbar) }
+        }
     ) { padding ->
         Column(
             modifier = Modifier
@@ -139,15 +133,17 @@ private fun SettingsContent(
                 SettingsRow(
                     icon = Icons.Outlined.PrivacyTip,
                     title = "Privacy Policy",
-                    subtitle = "Coming before launch",
-                    onClick = showComingSoon
+                    subtitle = "What we collect and who can see it",
+                    onClick = { uriHandler.openUri(LegalLinks.PRIVACY_POLICY) },
+                    trailing = Icons.AutoMirrored.Outlined.OpenInNew
                 )
                 HairlineDivider()
                 SettingsRow(
                     icon = Icons.Outlined.Description,
                     title = "Terms of Use",
-                    subtitle = "Coming before launch",
-                    onClick = showComingSoon
+                    subtitle = "The rules for using Curated",
+                    onClick = { uriHandler.openUri(LegalLinks.TERMS_OF_USE) },
+                    trailing = Icons.AutoMirrored.Outlined.OpenInNew
                 )
             }
 
@@ -208,7 +204,9 @@ private fun SettingsRow(
     subtitle: String?,
     onClick: () -> Unit,
     showChevron: Boolean = true,
-    tint: Color = MaterialTheme.colorScheme.primary
+    tint: Color = MaterialTheme.colorScheme.primary,
+    /** Replaces the chevron, e.g. for rows that leave the app. */
+    trailing: ImageVector? = null
 ) {
     Row(
         modifier = Modifier
@@ -231,7 +229,7 @@ private fun SettingsRow(
         }
         if (showChevron) {
             Icon(
-                Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                trailing ?: Icons.AutoMirrored.Outlined.KeyboardArrowRight,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
