@@ -46,8 +46,9 @@ plans, notes and anything else you add.
 - **You're responsible for your content.** Only post what you have the right
   to post, including photos of other people, and respect their privacy.
 - **Choose visibility with care.** Public trips can be seen by anyone, and
-  unlisted trips by anyone with the link. Photos you add keep the location and
-  time information stored in them (see the Privacy Policy).
+  unlisted trips by anyone with the link. Photos are stored at links that
+  open for anyone who has them, whatever the trip's visibility (see the
+  Privacy Policy).
 
 ## 4. Content rules
 

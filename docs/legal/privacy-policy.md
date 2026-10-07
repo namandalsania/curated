@@ -24,8 +24,9 @@ company]** ("we", "us"). You can contact us at **[PLACEHOLDER: contact email]**.
 - Trips you make **public** can be seen by anyone. **Unlisted** trips can be
   seen by anyone who has the link. **Private** trips are only for you.
 - To build a trip from your photos, the app reads the location and time stored
-  in each photo **on your phone**. Photos you add are uploaded **as they are,
-  including that information** (see "Photos and their metadata").
+  in each photo **on your phone**. Before a photo is uploaded, the app
+  **removes that stored information** from the file (see "Photos and their
+  metadata").
 - We use Supabase to store your account and content, Google for maps and place
   names, and Firebase Crashlytics to learn about crashes.
 - We don't sell your information or show ads.
@@ -69,15 +70,19 @@ days and places. To do this, the app asks Android for permission to read the
 location stored in photos ("access media location"). The app never asks for,
 and never reads, your phone's own current location.
 
-The photos you add are then **uploaded as the original files, with their
-stored metadata intact**: the GPS position, the date and time, and anything
-else your camera recorded (for example, the phone model). The positions of
-your places are also saved separately so they can be shown on maps.
+**Before a photo is uploaded, the app makes a new copy of it without any
+stored metadata**: no GPS position, no date and time, no camera details, and
+none of the other information cameras and editing apps store in photos (EXIF,
+XMP and IPTC). The copy is turned the right way up and made smaller (at most
+2048 pixels on the long side for place photos, 640 for profile photos). Only
+that copy is uploaded; the original never leaves your phone.
 
-[PLACEHOLDER: decide whether to strip photo metadata before upload. If it is
-stripped, replace the paragraph above with: "Before a photo is uploaded, the
-app removes its stored metadata. Only the photo itself, and the place and time
-you confirmed, are saved."]
+What is saved separately is what you confirmed while building the trip: each
+place's map position, and the time each photo was taken. Those are part of
+your trip, and are shown to whoever can see it (see "Who can see what").
+
+[PLACEHOLDER: photos uploaded during testing, before this change, kept their
+metadata. Delete or re-process them before launch, then remove this note.]
 
 ### Information collected automatically
 
@@ -113,7 +118,10 @@ the lists of who you follow and who follows you.
 
 ### Your trips
 
-You choose this for each trip:
+You choose this for each trip. For the trip itself (its title, days, places,
+captions, tips and comments) the setting is enforced both by the app and by
+our database, which refuses to return a trip to someone who isn't allowed to
+see it:
 
 - **Public:** shown in Explore, search and your followers' feeds, and on your
   profile. Anyone can open it.
@@ -127,9 +135,15 @@ you've posted.
 Comments, likes and the places you've saved from other people's trips are
 visible to the people who can see that trip.
 
-Photo files are stored at long, unguessable web addresses. Anyone who has a
-photo's address can open it, whatever the trip's visibility, even though the
-app only shows photos to the people allowed to see the trip.
+**Photos work differently.** Photo files are kept in public storage, at long,
+random web addresses. The app only shows a photo to people allowed to see its
+trip, but **anyone who has a photo's address can open that photo, whatever the
+trip's visibility**, for example if someone who could see the trip shares the
+address. Photos carry no location or other metadata (see above).
+
+[PLACEHOLDER: until the storage listing fix (migration
+20261007_storage_no_public_listing.sql) is applied, the list of photo
+addresses can also be retrieved by anyone. Remove this note once it's applied.]
 
 ### Blocking
 

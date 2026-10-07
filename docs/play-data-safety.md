@@ -34,9 +34,9 @@ Definitions used below follow Play's form:
 | **Personal info → Email address** | Yes | No | Required | App functionality, Account management | Sign-in, confirmation and reset emails (Supabase Auth) |
 | **Personal info → User IDs** | Yes | No | Required | App functionality, Account management | Username and the account's internal ID |
 | **Personal info → Other info** | Yes | No | Optional | App functionality | Bio. ⚠ check whether a free-text bio needs declaring here or is covered by "Other user-generated content". |
-| **Location → Precise location** | Yes | No | Optional | App functionality | GPS position read from the **metadata of photos the user picks** (permission `ACCESS_MEDIA_LOCATION`), saved as each place's coordinates, and **kept inside the uploaded photo files**. The app never reads the device's own location. ⚠ check: Play's location types are framed around device location; declaring "Precise location" is the cautious answer, because exact coordinates are stored and public trips show them. |
+| **Location → Precise location** | Yes | No | Optional | App functionality | GPS position read from the **metadata of photos the user picks** (permission `ACCESS_MEDIA_LOCATION`), saved as each place's coordinates. Uploaded photo files carry **no** location: metadata is stripped before upload. The app never reads the device's own location. ⚠ check: Play's location types are framed around device location; declaring "Precise location" is the cautious answer, because exact coordinates are stored and public trips show them. |
 | **Location → Approximate location** | Yes | No | Optional | App functionality | City and country derived from those coordinates (Android geocoder). ⚠ check: may be covered by the Precise row. |
-| **Photos and videos → Photos** | Yes | No | Optional | App functionality | Photos added to places and the profile photo, uploaded as original files, metadata included |
+| **Photos and videos → Photos** | Yes | No | Optional | App functionality | Photos added to places and the profile photo. Re-encoded before upload: no EXIF/XMP/IPTC metadata (no GPS, time or camera details), max 2048 px (avatars 640 px). |
 | **Messages → Other in-app messages** | Yes | No | Optional | App functionality | Comments on places; notes sent with trip shares. ⚠ check: comments may instead belong under "Other user-generated content". Declaring both is the cautious answer. |
 | **App activity → App interactions** | Yes | No | Optional | App functionality | Likes, follows, saved trips, saved places, blocks, and read state of notifications and shares |
 | **App activity → In-app search history** | Yes | No | Optional | App functionality | Text typed into place search is sent to Google Places to get suggestions; trip search terms are sent to Supabase to run the query. Neither is stored as history. ⚠ check: collected-but-not-stored may still count as collected. |
@@ -70,15 +70,17 @@ in the app. If an opt-out is added later, these can become optional.
 
 ## Things that affect these answers
 
-1. **Photo metadata.** Photos are uploaded with their EXIF metadata,
-   including GPS. That keeps "Precise location" firmly collected, and the
-   precise position of photos in **unlisted and private** trips sits in files
-   that anyone with the address can open. If metadata is stripped before
-   upload, the photo row stays but the location exposure narrows to the stop
-   coordinates the user sees.
-2. **Crashlytics opt-out.** Adding one would let the crash and diagnostics rows
+1. **Photo metadata.** Since build `9924dd8`, photos are re-encoded without
+   metadata before upload, so photo files hold no location. "Precise location"
+   is still collected, as each place's coordinates, read from the photo on the
+   device. Photos uploaded during testing before that build still carry GPS;
+   clean them up before launch.
+2. **Photo storage.** Photo files are public by link, whatever the trip's
+   visibility. Until migration `20261007_storage_no_public_listing.sql` is
+   applied, the buckets can also be listed by anyone.
+3. **Crashlytics opt-out.** Adding one would let the crash and diagnostics rows
    be marked optional.
-3. **Service providers.** Supabase, Google Maps Platform and Firebase are
+4. **Service providers.** Supabase, Google Maps Platform and Firebase are
    declared as service providers, so nothing is "shared". If the owner's
    reading differs for Google Places (which receives typed search text and
    coordinates), mark those rows "Shared: Yes, App functionality".

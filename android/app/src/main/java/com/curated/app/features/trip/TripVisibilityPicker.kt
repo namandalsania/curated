@@ -36,6 +36,13 @@ fun TripVisibility.explanation(): String = when (this) {
     TripVisibility.PRIVATE -> "Only you."
 }
 
+/**
+ * The one thing visibility doesn't cover. Trip details follow the setting in
+ * the app and the database, but photo files are served from a public bucket:
+ * their links are long and random, and anyone who has one can open it.
+ */
+const val PHOTO_LINK_NOTE = "Photos are stored at hard-to-guess links. Anyone who has a photo's link can open it, whatever this setting."
+
 /** Who can see a trip: one row per setting, each with what it means. */
 @Composable
 fun TripVisibilityPicker(
@@ -81,6 +88,12 @@ fun TripVisibilityPicker(
                 }
             }
         }
+        Text(
+            PHOTO_LINK_NOTE,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = Spacing.xs)
+        )
     }
 }
 
