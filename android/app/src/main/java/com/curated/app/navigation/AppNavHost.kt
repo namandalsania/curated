@@ -46,6 +46,7 @@ import com.curated.app.features.create.createNavGraph
 import com.curated.app.features.explore.ExploreScreen
 import com.curated.app.features.explore.TripDetailScreen
 import com.curated.app.features.home.HomeFeedScreen
+import com.curated.app.features.home.HomeReselect
 import com.curated.app.features.moderation.BlockedAccountsScreen
 import com.curated.app.features.plans.PlanEditorScreen
 import com.curated.app.features.plans.PlansScreen
@@ -91,7 +92,11 @@ fun AppNavHost(currentUserId: String) {
                 ) {
                     NavigationBarItem(
                         selected = currentDestination.isInHierarchy(AppRoutes.HOME),
-                        onClick = { navController.navigateToTab(AppRoutes.HOME) },
+                        onClick = {
+                            // Already on Home: scroll it to the top instead.
+                            if (currentDestination?.route == AppRoutes.HOME) HomeReselect.events.tryEmit(Unit)
+                            else navController.navigateToTab(AppRoutes.HOME)
+                        },
                         icon = { NavIconSlot { Icon(Icons.Outlined.Home, contentDescription = "Home") } },
                         label = { Text("Home") },
                         colors = itemColors
@@ -153,7 +158,9 @@ fun AppNavHost(currentUserId: String) {
                     onAuthorClick = { authorId -> navController.navigate(AppRoutes.profile(authorId)) },
                     onOpenPlans = { navController.navigate(AppRoutes.PLANS) { launchSingleTop = true } },
                     onOpenActivity = { tab -> navController.navigate(AppRoutes.activity(tab)) { launchSingleTop = true } },
-                    onOpenSavedPlaces = { navController.navigate(AppRoutes.SAVED_PLACES) { launchSingleTop = true } }
+                    onOpenSavedPlaces = { navController.navigate(AppRoutes.SAVED_PLACES) { launchSingleTop = true } },
+                    onLiveDayClick = { tripId, dayIndex -> navController.navigate(AppRoutes.tripDetailAtDay(tripId, dayIndex)) },
+                    onFindPeople = { navController.navigateToTab(AppRoutes.EXPLORE) }
                 )
             }
             composable(AppRoutes.EXPLORE) {
@@ -165,14 +172,19 @@ fun AppNavHost(currentUserId: String) {
             createNavGraph(navController)
             composable(
                 route = AppRoutes.TRIP_DETAIL_PATTERN,
-                arguments = listOf(navArgument("tripId") { type = NavType.StringType })
+                arguments = listOf(
+                    navArgument("tripId") { type = NavType.StringType },
+                    navArgument("day") { type = NavType.IntType; defaultValue = -1 }
+                )
             ) { entry ->
                 val tripId = entry.arguments?.getString("tripId").orEmpty()
+                val initialDay = entry.arguments?.getInt("day")?.takeIf { it > 0 }
                 TripDetailScreen(
                     tripId = tripId,
                     onBack = { navController.popBackStack() },
                     onAuthorClick = { authorId -> navController.navigate(AppRoutes.profile(authorId)) },
-                    onOpenSavedPlaces = { navController.navigate(AppRoutes.SAVED_PLACES) { launchSingleTop = true } }
+                    onOpenSavedPlaces = { navController.navigate(AppRoutes.SAVED_PLACES) { launchSingleTop = true } },
+                    initialDay = initialDay
                 )
             }
             composable(

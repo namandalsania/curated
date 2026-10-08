@@ -18,6 +18,7 @@ import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.query.Order
+import io.github.jan.supabase.postgrest.query.filter.FilterOperator
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.Instant
 import kotlinx.datetime.LocalDate
@@ -125,13 +126,15 @@ class TripRepository(private val client: SupabaseClient) {
                     eq("status", "completed")
                     eq("visibility", "public")
                 }
+                // When it was published, not when its draft was started.
+                order("completed_at", Order.DESCENDING, nullsFirst = false)
                 order("created_at", Order.DESCENDING)
                 range(offset, offset + limit - 1)
             }
             .decodeList()
     }
 
-    /** Everyone's newest completed trips: the Trending tab, and the cold-start feed. */
+    /** Everyone's newest published trips: the Latest tab, and the cold-start feed. */
     suspend fun fetchRecentPublicTrips(limit: Long = 20, offset: Long = 0): List<Trip> =
         postgrest.from("trips")
             .select {
@@ -139,6 +142,7 @@ class TripRepository(private val client: SupabaseClient) {
                     eq("status", "completed")
                     eq("visibility", "public")
                 }
+                order("completed_at", Order.DESCENDING, nullsFirst = false)
                 order("created_at", Order.DESCENDING)
                 range(offset, offset + limit - 1)
             }
@@ -209,6 +213,55 @@ class TripRepository(private val client: SupabaseClient) {
                     names = rows.sortedWith(compareBy({ it.day.sortKey() }, { it.orderInDay })).map { it.name }
                 )
             }
+    }
+
+    /**
+     * Days [authorIds] posted while travelling (post_day) on live, public
+     * trips, newest first - the live items in the Following feed. A live trip
+     * with nothing posted has no rows here, so it never shows. The database
+     * hides blocked authors' trips, and with them their days.
+     */
+    suspend fun fetchPostedLiveDays(authorIds: List<String>, limit: Long = 30): List<PostedLiveDay> {
+        if (authorIds.isEmpty()) return emptyList()
+        val rows = postgrest.from("days")
+            .select(columns = Columns.raw("id,trip_id,day_index,date,published_at,trip:trips!inner(*)")) {
+                filter {
+                    eq("published_via", "post_day")
+                    filterNot("published_at", FilterOperator.IS, "null")
+                    eq("trip.status", "live")
+                    eq("trip.visibility", "public")
+                    isIn("trip.author_id", authorIds)
+                }
+                order("published_at", Order.DESCENDING)
+                limit(limit)
+            }
+            .decodeList<PostedDayRow>()
+        if (rows.isEmpty()) return emptyList()
+
+        // Each day's places, in order, with their photos - for its names and cover.
+        val stops = postgrest.from("stops")
+            .select(columns = Columns.raw("day_id,name,order_in_day,stop_photos(storage_path,order_index)")) {
+                filter { isIn("day_id", rows.map { it.id }) }
+            }
+            .decodeList<DayStopRow>()
+            .groupBy { it.dayId }
+            .mapValues { (_, list) -> list.sortedBy { it.orderInDay } }
+
+        return rows.mapNotNull { row ->
+            val publishedAt = row.publishedAt ?: return@mapNotNull null
+            val dayStops = stops[row.id].orEmpty()
+            val cover = dayStops.asSequence()
+                .flatMap { stop -> stop.photos.sortedBy { it.orderIndex }.asSequence() }
+                .firstOrNull()?.storagePath
+            PostedLiveDay(
+                dayId = row.id,
+                dayIndex = row.dayIndex,
+                publishedAt = publishedAt,
+                trip = row.trip,
+                stopNames = dayStops.map { it.name },
+                coverUrl = cover?.let { resolvePhotoUrl(client, it) } ?: row.trip.coverPhotoUrl
+            )
+        }
     }
 
     suspend fun fetchTrip(tripId: String): Trip =
@@ -789,4 +842,37 @@ private data class PublishRow(
     val status: TripStatus,
     @SerialName("cover_photo_url") val coverPhotoUrl: String?,
     @SerialName("completed_at") val completedAt: String
+)
+
+/** A day posted on a live trip, ready for the feed. */
+data class PostedLiveDay(
+    val dayId: String,
+    val dayIndex: Int,
+    val publishedAt: Instant,
+    val trip: Trip,
+    val stopNames: List<String>,
+    val coverUrl: String?
+)
+
+@Serializable
+private data class PostedDayRow(
+    val id: String,
+    @SerialName("trip_id") val tripId: String,
+    @SerialName("day_index") val dayIndex: Int,
+    @SerialName("published_at") val publishedAt: Instant? = null,
+    val trip: Trip
+)
+
+@Serializable
+private data class DayStopRow(
+    @SerialName("day_id") val dayId: String,
+    val name: String,
+    @SerialName("order_in_day") val orderInDay: Int,
+    @SerialName("stop_photos") val photos: List<DayStopPhotoRow> = emptyList()
+)
+
+@Serializable
+private data class DayStopPhotoRow(
+    @SerialName("storage_path") val storagePath: String,
+    @SerialName("order_index") val orderIndex: Int
 )

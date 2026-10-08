@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
@@ -51,6 +52,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -94,7 +96,9 @@ fun TripDetailScreen(
     tripId: String,
     onBack: () -> Unit,
     onAuthorClick: (String) -> Unit,
-    onOpenSavedPlaces: () -> Unit
+    onOpenSavedPlaces: () -> Unit,
+    /** Open scrolled to this day (its number), e.g. from a live day in the feed. */
+    initialDay: Int? = null
 ) {
     val context = LocalContext.current
     val viewModel: TripDetailViewModel = viewModel(factory = TripDetailViewModel.factory(context))
@@ -102,6 +106,14 @@ fun TripDetailScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var openComments by remember { mutableStateOf<StopWithPhotos?>(null) }
+    val listState = rememberLazyListState()
+    // Once, when the days arrive: jump to the day we were opened for.
+    var scrolledToDay by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(state.days, initialDay) {
+        if (scrolledToDay || initialDay == null || state.days.isEmpty()) return@LaunchedEffect
+        dayItemIndex(state.days, initialDay)?.let { listState.scrollToItem(it) }
+        scrolledToDay = true
+    }
     var showShare by remember { mutableStateOf(false) }
     var showVisibility by remember { mutableStateOf(false) }
     val moderation = rememberModerationViewModel(key = "trip-$tripId")
@@ -226,6 +238,7 @@ fun TripDetailScreen(
                     modifier = Modifier.align(Alignment.Center)
                 )
                 else -> LazyColumn(
+                    state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(start = Spacing.md, end = Spacing.md, bottom = Spacing.xl)
                 ) {
@@ -612,3 +625,17 @@ private fun StopPhotoCarousel(urls: List<String>, contentDescription: String) {
 
 /** Why Share does nothing on a private trip, and the way round it. */
 internal const val PRIVATE_SHARE_HINT = "Private trips can't be shared. Make it unlisted first, then send it."
+
+/**
+ * Where day [dayIndex]'s header sits in the trip page's list: after the trip
+ * header, then each earlier day's header and its stops. Null if there's no
+ * such day (not posted yet, or hidden).
+ */
+internal fun dayItemIndex(days: List<TripDaySection>, dayIndex: Int): Int? {
+    var index = 1 // the trip header
+    for (day in days) {
+        if (day.dayIndex == dayIndex) return index
+        index += 1 + day.stops.size
+    }
+    return null
+}

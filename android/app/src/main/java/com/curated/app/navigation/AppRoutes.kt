@@ -6,7 +6,7 @@ import com.curated.app.features.profile.FollowListKind
 object AppRoutes {
     const val HOME = "home"
     const val EXPLORE = "explore"
-    const val TRIP_DETAIL_PATTERN = "trip_detail/{tripId}"
+    const val TRIP_DETAIL_PATTERN = "trip_detail/{tripId}?day={day}"
     const val PROFILE_PATTERN = "profile/{userId}"
     const val FOLLOW_LIST_PATTERN = "follow_list/{userId}/{kind}"
     const val EDIT_PROFILE = "edit_profile"
@@ -22,6 +22,7 @@ object AppRoutes {
     const val PROFILE_RELOAD_KEY = "profile_reload"
 
     fun tripDetail(tripId: String) = "trip_detail/$tripId"
+    fun tripDetailAtDay(tripId: String, dayIndex: Int) = "trip_detail/$tripId?day=$dayIndex"
     fun activity(tab: ActivityTab) = "activity/${tab.name}"
     fun profile(userId: String) = "profile/$userId"
     fun followList(userId: String, kind: FollowListKind) = "follow_list/$userId/${kind.name}"

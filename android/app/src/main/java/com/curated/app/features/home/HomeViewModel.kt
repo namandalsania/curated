@@ -16,27 +16,20 @@ import com.curated.app.core.data.SocialRepository
 import com.curated.app.core.data.SupabaseProvider
 import com.curated.app.core.data.SavedPlacesRepository
 import com.curated.app.core.data.TripRepository
-import com.curated.app.core.geocode.GeocodingService
-import com.curated.app.core.map.CityAggregator
-import com.curated.app.core.map.CountryVisit
 import com.curated.app.core.model.Notification
 import com.curated.app.core.model.Trip
 import io.github.jan.supabase.realtime.RealtimeChannel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.datetime.DateTimeUnit
-import kotlinx.datetime.LocalDate
-import kotlinx.datetime.TimeZone
-import kotlinx.datetime.plus
-import kotlinx.datetime.todayIn
-import kotlin.time.Clock
 
-/** Which feed you're looking at. */
-enum class FeedTab { FOLLOWING, TRENDING }
+/**
+ * Which feed you're looking at. LATEST is everyone's newest published trips -
+ * named for what it is: nothing here ranks by popularity yet.
+ */
+enum class FeedTab { FOLLOWING, LATEST }
 
 /** How many trips load at a time, and what one more scroll fetches. */
 private const val FEED_PAGE_SIZE = 10L
@@ -51,30 +44,6 @@ data class FeedItem(
     val stopNames: List<String> = emptyList()
 )
 
-/** A trip that was running on this date in an earlier year. */
-data class OnThisDay(val tripId: String, val title: String, val destination: String, val yearsAgo: Int)
-
-/**
- * The personal line above the feed: what you've done, rather than what other
- * people are doing. Deliberately separate from the feed's loading state so a
- * slow geocode never holds the trips back.
- */
-data class HomeHighlights(
-    val visits: List<CountryVisit> = emptyList(),
-    val savedPlaceCount: Int = 0,
-    val onThisDay: OnThisDay? = null
-) {
-    /** Nothing worth taking up space for yet. */
-    val isEmpty: Boolean get() = visits.isEmpty() && savedPlaceCount == 0 && onThisDay == null
-
-    /**
-     * Whether the highlights card will actually draw. The list has to know: an
-     * item that renders nothing still takes a slot in the arrangement's spacing,
-     * which is what put a double gap under the saved-places banner.
-     */
-    val hasStrip: Boolean get() = visits.isNotEmpty() || onThisDay != null
-}
-
 data class HomeUiState(
     val isLoading: Boolean = true,
     val isRefreshing: Boolean = false,
@@ -85,10 +54,13 @@ data class HomeUiState(
     /** True when you follow nobody: Following has nothing to show. */
     val isColdStart: Boolean = false,
     val feed: List<FeedItem> = emptyList(),
+    /** Days your follows posted on live trips; merged into Following by time. */
+    val liveDays: List<LiveDayItem> = emptyList(),
     val notifications: List<Notification> = emptyList(),
     val unreadCount: Int = 0,
     val unreadShares: Int = 0,
-    val highlights: HomeHighlights = HomeHighlights(),
+    /** For the saved-places banner; it hides itself at zero. */
+    val savedPlaceCount: Int = 0,
     val error: String? = null
 )
 
@@ -100,8 +72,7 @@ class HomeViewModel(
     private val notificationRepository: NotificationRepository,
     private val commentRepository: CommentRepository,
     private val shareRepository: ShareRepository,
-    private val savedPlacesRepository: SavedPlacesRepository,
-    private val geocodingService: GeocodingService
+    private val savedPlacesRepository: SavedPlacesRepository
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(HomeUiState())
@@ -124,11 +95,12 @@ class HomeViewModel(
                 val followingIds = socialRepository.fetchFollowingIds(myId)
                 val isColdStart = followingIds.isEmpty()
                 // Following with nobody followed would just be blank, so fall back.
-                val effectiveTab = if (tab == FeedTab.FOLLOWING && isColdStart) FeedTab.TRENDING else tab
+                val effectiveTab = if (tab == FeedTab.FOLLOWING && isColdStart) FeedTab.LATEST else tab
                 val trips = loadPage(effectiveTab, followingIds, offset = 0)
                 val feed = toFeedItems(trips, myId)
 
-                loadHighlights(myId)
+                val liveDays = if (effectiveTab == FeedTab.FOLLOWING) loadLiveDays(followingIds) else emptyList()
+                val savedPlaceCount = runCatching { savedPlacesRepository.fetchAll(myId).size }.getOrDefault(0)
 
                 val notifications = notificationRepository.fetchNotifications(myId)
                 val unreadShares = runCatching { shareRepository.unreadCount(myId) }.getOrDefault(0)
@@ -139,6 +111,8 @@ class HomeViewModel(
                         tab = tab,
                         isColdStart = isColdStart,
                         feed = feed,
+                        liveDays = liveDays,
+                        savedPlaceCount = savedPlaceCount,
                         canLoadMore = trips.size.toLong() == FEED_PAGE_SIZE,
                         notifications = notifications,
                         unreadCount = notifications.count { n -> n.readAt == null },
@@ -155,7 +129,7 @@ class HomeViewModel(
 
     fun selectTab(tab: FeedTab) {
         if (tab == _state.value.tab) return
-        _state.update { it.copy(tab = tab, feed = emptyList(), canLoadMore = true) }
+        _state.update { it.copy(tab = tab, feed = emptyList(), liveDays = emptyList(), canLoadMore = true) }
         refresh(tab)
     }
 
@@ -169,7 +143,7 @@ class HomeViewModel(
             try {
                 val followingIds = socialRepository.fetchFollowingIds(myId)
                 val effectiveTab =
-                    if (current.tab == FeedTab.FOLLOWING && followingIds.isEmpty()) FeedTab.TRENDING else current.tab
+                    if (current.tab == FeedTab.FOLLOWING && followingIds.isEmpty()) FeedTab.LATEST else current.tab
                 val trips = loadPage(effectiveTab, followingIds, offset = current.feed.size.toLong())
                 // Guard against a trip appearing twice if something was published mid-scroll.
                 val known = current.feed.mapTo(HashSet()) { it.trip.id }
@@ -189,45 +163,27 @@ class HomeViewModel(
         }
     }
 
-    private var highlightsJob: Job? = null
-
     /**
-     * Your own countries, saved places and anniversaries. Runs in its own job and
-     * swallows its errors: the strip is a bonus, and a feed that waits on a
-     * geocode to draw would be a bad trade.
+     * Days the people you follow posted on their live, public trips. A bonus on
+     * top of the trips: if it fails, Following still shows the trips.
      */
-    private fun loadHighlights(myId: String) {
-        if (highlightsJob?.isActive == true) return
-        highlightsJob = viewModelScope.launch {
-            val highlights = try {
-                // Where you've been counts whoever the trip was shared with.
-                val myTrips = tripRepository.fetchTripsByAuthor(myId, includeNonPublic = true)
-                val visits = if (myTrips.isEmpty()) {
-                    emptyList()
-                } else {
-                    CityAggregator.aggregate(tripRepository.fetchStopPointsFor(myTrips), geocodingService)
-                }
-                val savedCount = runCatching { savedPlacesRepository.fetchAll(myId).size }.getOrDefault(0)
-                HomeHighlights(
-                    visits = visits,
-                    savedPlaceCount = savedCount,
-                    onThisDay = myTrips.findOnThisDay(today())
-                )
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.w(TAG, "Couldn't build home highlights", e)
-                HomeHighlights()
-            }
-            _state.update { it.copy(highlights = highlights) }
+    private suspend fun loadLiveDays(followingIds: List<String>): List<LiveDayItem> {
+        if (followingIds.isEmpty()) return emptyList()
+        return try {
+            val days = tripRepository.fetchPostedLiveDays(followingIds)
+            val authors = socialRepository.fetchUsers(days.map { it.trip.authorId }.distinct()).associateBy { it.id }
+            days.map { LiveDayItem(it.copy(trip = it.trip.copy(author = authors[it.trip.authorId]))) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Couldn't load live days", e)
+            emptyList()
         }
     }
 
-    private fun today(): LocalDate = Clock.System.todayIn(TimeZone.currentSystemDefault())
-
     private suspend fun loadPage(tab: FeedTab, followingIds: List<String>, offset: Long): List<Trip> = when (tab) {
         FeedTab.FOLLOWING -> tripRepository.fetchTripsByAuthors(followingIds, FEED_PAGE_SIZE, offset)
-        FeedTab.TRENDING -> tripRepository.fetchRecentPublicTrips(FEED_PAGE_SIZE, offset)
+        FeedTab.LATEST -> tripRepository.fetchRecentPublicTrips(FEED_PAGE_SIZE, offset)
     }
 
     private suspend fun toFeedItems(trips: List<Trip>, myId: String): List<FeedItem> {
@@ -370,42 +326,18 @@ class HomeViewModel(
                     notificationRepository = NotificationRepository(client),
                     commentRepository = CommentRepository(client),
                     shareRepository = ShareRepository(client),
-                    savedPlacesRepository = SavedPlacesRepository(client),
-                    geocodingService = GeocodingService(context.applicationContext)
+                    savedPlacesRepository = SavedPlacesRepository(client)
                 )
             }
         }
     }
 }
 
-/**
- * The most recent earlier-year trip that was under way on this calendar day.
- * Matching the whole range rather than just the start date means a two-week trip
- * can surface on any of its days, not only the one it began.
- */
-private fun List<Trip>.findOnThisDay(today: LocalDate): OnThisDay? = this
-    .filter { it.startDate.year < today.year }
-    .filter { trip ->
-        // Walk the trip's days; ranges are short, and this sidesteps the
-        // year-boundary and leap-day traps of comparing month/day arithmetic.
-        generateSequence(trip.startDate) { day ->
-            if (day < trip.endDate) day.plus(1, DateTimeUnit.DAY) else null
-        }.any { it.month == today.month && it.day == today.day }
-    }
-    .maxByOrNull { it.startDate }
-    ?.let { trip ->
-        OnThisDay(
-            tripId = trip.id,
-            title = trip.title,
-            destination = trip.destination,
-            yearsAgo = today.year - trip.startDate.year
-        )
-    }
-
 /** This state without [authorIds]' trips and notifications. */
 internal fun HomeUiState.withoutAuthors(authorIds: Set<String>): HomeUiState =
     if (authorIds.isEmpty()) this
     else copy(
         feed = feed.filter { it.trip.authorId !in authorIds },
+        liveDays = liveDays.filter { it.trip.authorId !in authorIds },
         notifications = notifications.filter { it.actorId !in authorIds }
     )

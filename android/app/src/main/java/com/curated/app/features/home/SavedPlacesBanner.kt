@@ -34,8 +34,7 @@ private val BannerCorner = 16.dp
  * "3 saved places - ready to plan", above the feed. Opens the saved-places list,
  * which is where a trip actually gets started from.
  *
- * Dismissal is deliberately session-only: the prompt is worth showing again next
- * time the app opens, and a permanent dismissal would need somewhere to store it.
+ * Dismissing it is permanent: Home remembers it on the device.
  */
 @Composable
 fun SavedPlacesBanner(

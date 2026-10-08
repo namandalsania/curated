@@ -37,6 +37,8 @@ import com.curated.app.core.format.Noun
 import com.curated.app.core.format.countText
 import com.curated.app.designsystem.Spacing
 import com.curated.app.designsystem.components.LikeButton
+import com.curated.app.designsystem.components.Tag
+import com.curated.app.designsystem.components.TagStyle
 import com.curated.app.designsystem.pressScale
 import com.curated.app.features.trip.StopPreviewRow
 import com.curated.app.features.trip.stopPreview
@@ -172,7 +174,7 @@ private fun AuthorRow(item: FeedItem, now: Instant, onAuthorClick: () -> Unit) {
             modifier = Modifier.weight(1f, fill = false)
         )
         Text(
-            relativeTime(item.trip.createdAt, now),
+            relativeTime(item.trip.publishedTime, now),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -261,5 +263,114 @@ internal fun relativeTime(posted: Instant, now: Instant): String {
         days < 7 -> "${days}d"
         days < 365 -> "${days / 7}w"
         else -> "${days / 365}y"
+    }
+}
+
+/**
+ * A day someone posted on a live trip: their name, the day's first photo,
+ * "Day 3 · Bangkok" with a Live tag, the trip it belongs to, and the day's
+ * places. No like or save here - those belong to the trip, which opens at this
+ * day on tap.
+ */
+@Composable
+fun LiveDayCard(
+    item: LiveDayItem,
+    onClick: () -> Unit,
+    onAuthorClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    now: Instant = Clock.System.now()
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = RoundedCornerShape(CardCorner)
+    val author = item.trip.author
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = Spacing.md)
+            .pressScale(interactionSource)
+            .clip(shape)
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
+            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onAuthorClick)
+                .padding(horizontal = Spacing.md, vertical = Spacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
+        ) {
+            Box(
+                modifier = Modifier.size(AvatarSize).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center
+            ) {
+                if (author?.avatarUrl != null) {
+                    AsyncImage(model = author.avatarUrl, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                } else {
+                    Text(
+                        author?.displayName?.firstOrNull()?.uppercase().orEmpty(),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            Text(
+                author?.displayName ?: "someone",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false)
+            )
+            Text(
+                relativeTime(item.day.publishedAt, now),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(IMAGE_ASPECT_RATIO)
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            if (item.day.coverUrl != null) {
+                AsyncImage(
+                    model = item.day.coverUrl,
+                    contentDescription = item.title,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            }
+        }
+
+        Column(
+            modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.sm + 4.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                Text(
+                    item.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                Tag("Live", style = TagStyle.Accent)
+            }
+            Text(
+                item.trip.title,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (item.day.stopNames.isNotEmpty()) {
+                StopPreviewRow(stopPreview(item.day.stopNames, item.day.stopNames.size))
+            }
+        }
     }
 }

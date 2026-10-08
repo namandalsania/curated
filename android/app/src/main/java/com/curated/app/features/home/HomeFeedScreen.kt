@@ -1,10 +1,13 @@
 package com.curated.app.features.home
 
+import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.automirrored.outlined.Send
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.draw.clipToBounds
@@ -79,7 +82,11 @@ fun HomeFeedScreen(
     onAuthorClick: (String) -> Unit,
     onOpenPlans: () -> Unit,
     onOpenActivity: (ActivityTab) -> Unit,
-    onOpenSavedPlaces: () -> Unit
+    onOpenSavedPlaces: () -> Unit,
+    /** A live day: open its trip at that day. */
+    onLiveDayClick: (tripId: String, dayIndex: Int) -> Unit,
+    /** "Find people to follow", at the end of the feed. */
+    onFindPeople: () -> Unit
 ) {
     val context = LocalContext.current
     val viewModel: HomeViewModel = viewModel(factory = HomeViewModel.factory(context))
@@ -87,7 +94,14 @@ fun HomeFeedScreen(
     // Drops blocked accounts' content already on screen; the database stops serving it.
     val blocked by BlockedAccounts.ids.collectAsState()
     val state = rawState.withoutAuthors(blocked)
-    var savedBannerDismissed by rememberSaveable { mutableStateOf(false) }
+    // Live days belong to Following; with nobody followed it shows Latest instead.
+    val entries = remember(state.feed, state.liveDays, state.tab, state.isColdStart, state.canLoadMore) {
+        val days = if (state.tab == FeedTab.FOLLOWING && !state.isColdStart) state.liveDays else emptyList()
+        mergeFeed(state.feed, days, tripsComplete = !state.canLoadMore)
+    }
+    // Dismissing the saved-places banner is for good, not just this session.
+    val prefs = remember { context.getSharedPreferences(HOME_PREFS, Context.MODE_PRIVATE) }
+    var savedBannerDismissed by remember { mutableStateOf(prefs.getBoolean(KEY_SAVED_BANNER_DISMISSED, false)) }
     val listState = rememberLazyListState()
     // enterAlways: the bar leaves on the first downward scroll and comes back the
     // moment you scroll up, rather than waiting for the top of the list.
@@ -96,6 +110,13 @@ fun HomeFeedScreen(
     LaunchedEffect(Unit) {
         viewModel.refresh()
         viewModel.startNotificationListener()
+    }
+    // Tapping Home while already on Home goes back to the top.
+    LaunchedEffect(listState) {
+        HomeReselect.events.collect {
+            scrollBehavior.state.heightOffset = 0f
+            listState.animateScrollToItem(0)
+        }
     }
     // Back from Activity: what it marked read shouldn't still show as a badge.
     LifecycleResumeEffect(Unit) {
@@ -171,10 +192,10 @@ fun HomeFeedScreen(
                         onRetry = { viewModel.refresh() },
                         modifier = Modifier.align(Alignment.Center)
                     )
-                    state.feed.isEmpty() -> EmptyState(
+                    entries.isEmpty() -> EmptyState(
                         headline = if (state.tab == FeedTab.FOLLOWING) "Nothing from your people yet" else "No trips yet",
                         body = if (state.tab == FeedTab.FOLLOWING) {
-                            "Follow a few travellers, or switch to Trending to see what's new."
+                            "Follow a few travellers, or switch to Latest to see what's new."
                         } else {
                             "Publish a trip to get things started."
                         },
@@ -188,41 +209,48 @@ fun HomeFeedScreen(
                         // them: a full gutter of background is what separates one
                         // photograph from the next.
                         verticalArrangement = Arrangement.spacedBy(Spacing.md),
-                        contentPadding = PaddingValues(bottom = Spacing.md)
+                        contentPadding = PaddingValues(top = Spacing.xs, bottom = Spacing.md)
                     ) {
-                        if (!savedBannerDismissed) {
+                        // Only given a slot when it draws: an empty item still takes the
+                        // list's spacing, which is what left a gap under the tabs.
+                        if (!savedBannerDismissed && state.savedPlaceCount > 0) {
                             item(key = "saved-banner") {
                                 SavedPlacesBanner(
-                                    savedPlaceCount = state.highlights.savedPlaceCount,
+                                    savedPlaceCount = state.savedPlaceCount,
                                     onClick = onOpenSavedPlaces,
-                                    onDismiss = { savedBannerDismissed = true }
+                                    onDismiss = {
+                                        savedBannerDismissed = true
+                                        prefs.edit().putBoolean(KEY_SAVED_BANNER_DISMISSED, true).apply()
+                                    }
                                 )
-                            }
-                        }
-                        if (state.highlights.hasStrip) {
-                            item(key = "highlights") {
-                                HomeHighlightsCard(highlights = state.highlights, onOpenTrip = onTripClick)
                             }
                         }
                         if (state.isColdStart && state.tab == FeedTab.FOLLOWING) {
                             item(key = "cold-start") {
                                 Text(
-                                    "Trending trips — follow people to personalize this feed.",
+                                    "Latest trips — follow people to personalize this feed.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.sm)
                                 )
                             }
                         }
-                        itemsIndexed(state.feed, key = { _, item -> item.trip.id }) { index, item ->
+                        itemsIndexed(entries, key = { _, entry -> entry.key }) { index, entry ->
                             AnimatedListItem(index = index) {
-                                FeedItemCard(
-                                    item = item,
-                                    onClick = { onTripClick(item.trip.id) },
-                                    onAuthorClick = { onAuthorClick(item.trip.authorId) },
-                                    onLikeToggle = { viewModel.toggleLike(item.trip.id) },
-                                    onSaveToggle = { viewModel.toggleSave(item.trip.id) }
-                                )
+                                when (entry) {
+                                    is FeedEntry.TripEntry -> FeedItemCard(
+                                        item = entry.item,
+                                        onClick = { onTripClick(entry.item.trip.id) },
+                                        onAuthorClick = { onAuthorClick(entry.item.trip.authorId) },
+                                        onLikeToggle = { viewModel.toggleLike(entry.item.trip.id) },
+                                        onSaveToggle = { viewModel.toggleSave(entry.item.trip.id) }
+                                    )
+                                    is FeedEntry.DayEntry -> LiveDayCard(
+                                        item = entry.item,
+                                        onClick = { onLiveDayClick(entry.item.trip.id, entry.item.day.dayIndex) },
+                                        onAuthorClick = { onAuthorClick(entry.item.trip.authorId) }
+                                    )
+                                }
                             }
                         }
                         if (state.isLoadingMore) {
@@ -231,6 +259,8 @@ fun HomeFeedScreen(
                                     CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                                 }
                             }
+                        } else if (!state.canLoadMore) {
+                            item(key = "caught-up") { CaughtUp(onFindPeople = onFindPeople) }
                         }
                     }
                 }
@@ -258,9 +288,9 @@ private fun FeedTabs(
             onClick = { onSelect(FeedTab.FOLLOWING) }
         )
         FeedTab(
-            label = "Trending",
-            selected = selected == FeedTab.TRENDING || isColdStart,
-            onClick = { onSelect(FeedTab.TRENDING) }
+            label = "Latest",
+            selected = selected == FeedTab.LATEST || isColdStart,
+            onClick = { onSelect(FeedTab.LATEST) }
         )
     }
 }
@@ -298,3 +328,29 @@ private val TabRowHeight = 48.dp
 
 /** A badge's count, capped so it stays a badge. */
 internal fun badgeText(count: Int): String = if (count > 9) "9+" else count.toString()
+
+/** The end of the feed: nothing more to load. */
+@Composable
+private fun CaughtUp(onFindPeople: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.md, vertical = Spacing.lg),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(Spacing.xs)
+    ) {
+        Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            "You're all caught up",
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        TextButton(onClick = onFindPeople) { Text("Find people to follow") }
+    }
+}
+
+/** Taps on the Home tab while Home is already showing; the feed scrolls to the top. */
+object HomeReselect {
+    val events = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+}
+
+private const val HOME_PREFS = "home"
+private const val KEY_SAVED_BANNER_DISMISSED = "saved_banner_dismissed"
