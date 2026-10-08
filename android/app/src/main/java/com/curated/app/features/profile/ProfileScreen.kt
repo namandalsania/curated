@@ -196,11 +196,14 @@ fun ProfileScreen(
                             .height(72.dp)
                     )
                 }
-                state.error != null -> ErrorState(
-                    message = state.error.orEmpty(),
-                    onRetry = { viewModel.load(userId) },
-                    modifier = Modifier.align(Alignment.Center)
-                )
+                // Never a dead end: Try again, and Sign out underneath.
+                state.error != null -> Column(
+                    modifier = Modifier.align(Alignment.Center),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    ErrorState(message = state.error.orEmpty(), onRetry = { viewModel.load(userId) })
+                    TextButton(onClick = viewModel::signOut) { Text("Sign out") }
+                }
                 isBlockedProfile -> state.profileUser?.let { user ->
                     val moderationState by moderation.state.collectAsState()
                     BlockedProfile(

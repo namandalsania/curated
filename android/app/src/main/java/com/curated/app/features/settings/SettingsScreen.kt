@@ -63,7 +63,7 @@ class SettingsViewModel(private val authRepository: AuthRepository) : ViewModel(
     fun signOut() {
         viewModelScope.launch {
             BlockedAccounts.clear()
-            authRepository.signOut()
+            authRepository.signOutEverywherePossible()
         }
     }
 

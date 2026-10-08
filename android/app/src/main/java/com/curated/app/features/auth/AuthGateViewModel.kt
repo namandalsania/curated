@@ -6,9 +6,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.curated.app.core.data.AccountStatus
 import com.curated.app.core.data.AuthRepository
 import com.curated.app.core.data.PasswordRecovery
 import com.curated.app.core.data.SupabaseProvider
+import com.curated.app.core.data.accountStatusOf
+import io.github.jan.supabase.auth.status.RefreshFailureCause
 import io.github.jan.supabase.auth.status.SessionStatus
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -65,6 +68,10 @@ class AuthGateViewModel(private val authRepository: AuthRepository) : ViewModel(
                         status is SessionStatus.NotAuthenticated -> _state.update {
                             AuthGateState(phase = AuthGatePhase.SIGNED_OUT, userId = null)
                         }
+                        // A refresh the server refused because the user is gone ends the session.
+                        status is SessionStatus.RefreshFailure &&
+                            accountStatusOf((status.cause as? RefreshFailureCause.InternalServerError)?.exception) ==
+                            AccountStatus.GONE -> authRepository.signOutLocally()
                         else -> _state.update { it.copy(phase = phaseWhileSettling(it.phase)) }
                     }
                 }
@@ -78,6 +85,10 @@ class AuthGateViewModel(private val authRepository: AuthRepository) : ViewModel(
             return
         }
         val hasProfile = authRepository.fetchProfile(userId) != null || createProfileFromSignUp(userId)
+        // No profile and no way to make one may mean the account was deleted
+        // elsewhere: if the server confirms it, sign out instead of asking for a
+        // profile that can't be saved. (Signing out moves the gate to SIGNED_OUT.)
+        if (!hasProfile && authRepository.signOutIfAccountGone()) return
         _state.update {
             AuthGateState(
                 phase = if (hasProfile) AuthGatePhase.READY else AuthGatePhase.NEEDS_PROFILE,

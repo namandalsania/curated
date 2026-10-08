@@ -3,14 +3,15 @@ package com.curated.app.core.data
 import com.curated.app.core.model.User
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.OtpType
-import io.github.jan.supabase.auth.SignOutScope
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.status.SessionStatus
 import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Columns
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
@@ -99,11 +100,48 @@ class AuthRepository(private val client: SupabaseClient) {
     fun currentEmail(): String? = client.auth.currentUserOrNull()?.email
 
     /**
-     * Forgets the session on this device only. After the account is deleted
-     * the server has nothing to sign out of, so a normal sign-out would fail.
+     * Forgets the session on this device, without asking the server. auth-kt's
+     * signOut(LOCAL) still calls /logout and, if that fails (offline, or the
+     * account already deleted), keeps the session - so this clears it directly.
      */
     suspend fun signOutLocally() {
-        client.auth.signOut(SignOutScope.LOCAL)
+        client.auth.clearSession()
+    }
+
+    /** Asks the server whether the signed-in account still exists. See [AccountStatus]. */
+    suspend fun checkAccount(): AccountStatus =
+        try {
+            client.auth.retrieveUserForCurrentSession(updateSession = false)
+            AccountStatus.EXISTS
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            accountStatusOf(e)
+        }
+
+    /**
+     * Signs out on this device if - and only if - the server confirms the
+     * account no longer exists. Returns whether it did. Offline, timeouts and
+     * every other error leave the session alone.
+     */
+    suspend fun signOutIfAccountGone(): Boolean {
+        if (checkAccount() != AccountStatus.GONE) return false
+        runCatching { signOutLocally() }
+        return true
+    }
+
+    /**
+     * The sign-out that always works. Tells the server if it answers within a
+     * few seconds (so the session is revoked there too), then forgets the
+     * session on this device regardless - offline, a dead server or a deleted
+     * account can't keep anyone signed in. The timeout is for a server that's
+     * reachable but slow; offline, the call fails at once.
+     */
+    suspend fun signOutEverywherePossible() {
+        val toldServer = withTimeoutOrNull(SERVER_SIGN_OUT_TIMEOUT_MS) { runCatching { signOut() }.isSuccess } == true
+        if (!toldServer || client.auth.currentSessionOrNull() != null) {
+            runCatching { signOutLocally() }
+        }
     }
 
     suspend fun fetchProfile(userId: String): User? =
@@ -164,3 +202,6 @@ private data class NewUserRow(
     @SerialName("display_name") val displayName: String,
     @SerialName("avatar_url") val avatarUrl: String? = null
 )
+
+/** How long a sign-out waits for the server before going ahead on the device. */
+private const val SERVER_SIGN_OUT_TIMEOUT_MS = 3_000L

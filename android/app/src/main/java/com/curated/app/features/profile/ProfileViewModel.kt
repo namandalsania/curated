@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.curated.app.core.data.AuthRepository
+import com.curated.app.core.data.BlockedAccounts
 import com.curated.app.core.data.EngagementRepository
 import com.curated.app.core.data.SocialRepository
 import com.curated.app.core.data.SupabaseProvider
@@ -96,6 +97,13 @@ class ProfileViewModel(
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Couldn't load profile $profileUserId", e)
+                // Your own profile failing can mean your account was deleted
+                // elsewhere. Only the server saying so signs you out; otherwise
+                // the error stays, with Try again and Sign out.
+                if (profileUserId == authRepository.currentUserId() && authRepository.signOutIfAccountGone()) {
+                    BlockedAccounts.clear()
+                    return@launch
+                }
                 _state.update { it.copy(isLoading = false, error = "Couldn't load this profile.") }
                 return@launch
             }
@@ -159,6 +167,14 @@ class ProfileViewModel(
                     Log.w(TAG, "Couldn't delete draft $tripId", it)
                     _state.update { it.copy(actionError = "Couldn't delete that draft.") }
                 }
+        }
+    }
+
+    /** The way out of an error screen: always works, even offline or with the account gone. */
+    fun signOut() {
+        viewModelScope.launch {
+            BlockedAccounts.clear()
+            authRepository.signOutEverywherePossible()
         }
     }
 
