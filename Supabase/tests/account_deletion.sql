@@ -9,6 +9,12 @@
 -- touching that account is gone or scrubbed, that the other accounts' rows are
 -- exactly as they were, and that doing it again is harmless.
 --
+-- Storage rows: hosted Supabase refuses DELETE on storage.objects from SQL
+-- (storage.protect_delete - files may only be removed through the Storage API,
+-- which is what the function does). So the file fixtures live inside a
+-- savepoint that is rolled back - never deleted - before the account goes,
+-- standing in for the function's "remove files first" step.
+--
 -- A failure raises an exception, which aborts the script. Silence past the last
 -- NOTICE means a case failed - read the error, not the absence of output.
 
@@ -146,6 +152,8 @@ insert into public.blocks (blocker_id, blocked_id) values
   ('00000000-0000-0000-0000-0000000002a1', '00000000-0000-0000-0000-0000000002a3'),
   ('00000000-0000-0000-0000-0000000002a3', '00000000-0000-0000-0000-0000000002a1');
 
+savepoint storage_fixtures;
+
 -- Storage. Doomed: current avatar, an old avatar with no owner (prefix only), a
 -- photo of b1, and a photo left behind by a trip deleted earlier (owner only).
 -- Friend: an ownerless photo under friend's trip, and an avatar - neither may
@@ -189,32 +197,6 @@ begin
   raise notice 'PASS 1b: only service_role can call the storage helper';
 end $$;
 
--- ---------------------------------------------------------------------------
--- Snapshot of every row that doesn't involve doomed, to compare afterwards.
--- Rows of doomed's trip are excluded too (they go with the trip).
--- ---------------------------------------------------------------------------
-create temp view others_now as
-          select 'follows' t, md5(coalesce(string_agg(x::text, '|' order by x::text), '')) h from public.follows x
-           where '00000000-0000-0000-0000-0000000002a1' not in (x.follower_id, x.following_id)
-union all select 'trips', md5(coalesce(string_agg(x::text, '|' order by x::text), '')) from public.trips x
-           where x.author_id <> '00000000-0000-0000-0000-0000000002a1'
-union all select 'stops', md5(coalesce(string_agg(x::text, '|' order by x::text), '')) from public.stops x
-           where x.trip_id <> '00000000-0000-0000-0000-0000000002b1'
-union all select 'likes', md5(coalesce(string_agg(x::text, '|' order by x::text), '')) from public.likes x
-           where x.user_id <> '00000000-0000-0000-0000-0000000002a1' and x.trip_id <> '00000000-0000-0000-0000-0000000002b1'
-union all select 'notifications', md5(coalesce(string_agg(x::text, '|' order by x::text), '')) from public.notifications x
-           where x.recipient_id <> '00000000-0000-0000-0000-0000000002a1'
-             and x.actor_id is distinct from '00000000-0000-0000-0000-0000000002a1'
-union all select 'trip_shares', md5(coalesce(string_agg(x::text, '|' order by x::text), '')) from public.trip_shares x
-           where '00000000-0000-0000-0000-0000000002a1' not in (x.sender_id, x.recipient_id)
-union all select 'stop_comments', md5(coalesce(string_agg(x::text, '|' order by x::text), '')) from public.stop_comments x
-           where x.author_id <> '00000000-0000-0000-0000-0000000002a1' and x.trip_id <> '00000000-0000-0000-0000-0000000002b1'
-union all select 'reports_by_bystander', md5(coalesce(string_agg(x::text, '|' order by x::text), '')) from public.reports x
-           where x.reporter_id = '00000000-0000-0000-0000-0000000002a3'
-union all select 'storage_of_friend', md5(coalesce(string_agg(x.name, '|' order by x.name), '')) from storage.objects x
-           where x.name like '%0002a2-%' or x.name like '%0002b2/%';
-
-create temp table others_before as select * from others_now;
 
 -- ---------------------------------------------------------------------------
 -- Case 2a: the order matters. While doomed still owns files, the account can't
@@ -237,13 +219,43 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
--- The deletion, in the Edge Function's order: (1) remove doomed's files - here
--- with SQL, in the function through the Storage API, using the same helper -
--- then (2) delete the auth user.
+-- The deletion, in the Edge Function's order: (1) doomed's files go - here by
+-- rolling back to the savepoint (SQL may not delete storage rows; the function
+-- uses the Storage API) - then (2) the auth user is deleted.
 -- ---------------------------------------------------------------------------
-delete from storage.objects o
- using public.account_storage_objects('00000000-0000-0000-0000-0000000002a1') f
- where o.bucket_id = f.bucket_id and o.name = f.name;
+rollback to savepoint storage_fixtures;
+
+do $$
+begin
+  if exists (select 1 from storage.objects where name like '%0002a1%' or name like '%0002b1/%') then
+    raise exception 'setup: storage fixtures were not rolled back';
+  end if;
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- Snapshot of every row that doesn't involve doomed, to compare afterwards.
+-- Rows of doomed's trip are excluded too (they go with the trip).
+-- ---------------------------------------------------------------------------
+create temp view others_now as
+          select 'follows' t, md5(coalesce(string_agg(x::text, '|' order by x::text), '')) h from public.follows x
+           where '00000000-0000-0000-0000-0000000002a1' not in (x.follower_id, x.following_id)
+union all select 'trips', md5(coalesce(string_agg(x::text, '|' order by x::text), '')) from public.trips x
+           where x.author_id <> '00000000-0000-0000-0000-0000000002a1'
+union all select 'stops', md5(coalesce(string_agg(x::text, '|' order by x::text), '')) from public.stops x
+           where x.trip_id <> '00000000-0000-0000-0000-0000000002b1'
+union all select 'likes', md5(coalesce(string_agg(x::text, '|' order by x::text), '')) from public.likes x
+           where x.user_id <> '00000000-0000-0000-0000-0000000002a1' and x.trip_id <> '00000000-0000-0000-0000-0000000002b1'
+union all select 'notifications', md5(coalesce(string_agg(x::text, '|' order by x::text), '')) from public.notifications x
+           where x.recipient_id <> '00000000-0000-0000-0000-0000000002a1'
+             and x.actor_id is distinct from '00000000-0000-0000-0000-0000000002a1'
+union all select 'trip_shares', md5(coalesce(string_agg(x::text, '|' order by x::text), '')) from public.trip_shares x
+           where '00000000-0000-0000-0000-0000000002a1' not in (x.sender_id, x.recipient_id)
+union all select 'stop_comments', md5(coalesce(string_agg(x::text, '|' order by x::text), '')) from public.stop_comments x
+           where x.author_id <> '00000000-0000-0000-0000-0000000002a1' and x.trip_id <> '00000000-0000-0000-0000-0000000002b1'
+union all select 'reports_by_bystander', md5(coalesce(string_agg(x::text, '|' order by x::text), '')) from public.reports x
+           where x.reporter_id = '00000000-0000-0000-0000-0000000002a3';
+
+create temp table others_before as select * from others_now;
 
 delete from auth.users where id = '00000000-0000-0000-0000-0000000002a1';
 
@@ -355,7 +367,7 @@ begin
   if changed is not null then
     raise exception 'FAIL case 6: rows not involving the deleted account changed in: %', changed;
   end if;
-  raise notice 'PASS 6: every row not involving the deleted account is unchanged (9 tables compared)';
+  raise notice 'PASS 6: every row not involving the deleted account is unchanged (8 tables compared)';
 end $$;
 
 -- ---------------------------------------------------------------------------
