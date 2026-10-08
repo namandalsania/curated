@@ -8,7 +8,6 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.curated.app.core.data.AuthRepository
 import com.curated.app.core.data.CommentRepository
-import com.curated.app.core.data.NotificationRepository
 import com.curated.app.core.data.SupabaseProvider
 import com.curated.app.core.model.StopComment
 import io.github.jan.supabase.realtime.RealtimeChannel
@@ -41,8 +40,7 @@ class CommentsViewModel(
     private val tripId: String,
     private val tripAuthorId: String,
     private val authRepository: AuthRepository,
-    private val commentRepository: CommentRepository,
-    private val notificationRepository: NotificationRepository
+    private val commentRepository: CommentRepository
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(CommentsState())
@@ -95,15 +93,8 @@ class CommentsViewModel(
         _state.update { it.copy(isSending = true, error = null) }
         viewModelScope.launch {
             try {
+                // The trip's author is notified by the database.
                 commentRepository.add(stopId, tripId, me, body)
-                runCatching {
-                    notificationRepository.notifyStopComment(
-                        actorId = me,
-                        recipientId = tripAuthorId,
-                        tripId = tripId,
-                        stopId = stopId
-                    )
-                }
                 _state.update { it.copy(isSending = false, draft = "") }
                 // Reload rather than appending: it fills in the author profile.
                 load()
@@ -142,8 +133,7 @@ class CommentsViewModel(
                     tripId = tripId,
                     tripAuthorId = tripAuthorId,
                     authRepository = AuthRepository(client),
-                    commentRepository = CommentRepository(client),
-                    notificationRepository = NotificationRepository(client)
+                    commentRepository = CommentRepository(client)
                 )
             }
         }

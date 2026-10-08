@@ -10,9 +10,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.curated.app.core.cluster.PhotoCluster
 import com.curated.app.core.cluster.StopClusteringEngine
 import com.curated.app.core.data.AuthRepository
-import com.curated.app.core.data.NotificationRepository
 import com.curated.app.core.data.PhotoStorageRepository
-import com.curated.app.core.data.SocialRepository
 import com.curated.app.core.data.StopWithPhotos
 import com.curated.app.core.data.SupabaseProvider
 import com.curated.app.core.data.TripDaySection
@@ -135,9 +133,7 @@ class CreateTripViewModel(
     private val tripRepository: TripRepository,
     private val geocodingService: GeocodingService,
     private val placeSearch: PlaceSearchService,
-    private val photoStorageRepository: PhotoStorageRepository,
-    private val socialRepository: SocialRepository,
-    private val notificationRepository: NotificationRepository
+    private val photoStorageRepository: PhotoStorageRepository
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(CreateWizardState())
@@ -513,11 +509,7 @@ class CreateTripViewModel(
                 val trip = writeLock.withLock {
                     tripRepository.endTrip(tripId, LiveTripRules.endDate(start, _state.value.days))
                 }
-                // Same as publishing a finished trip: followers hear about the completed trip once.
-                if (trip.visibility == TripVisibility.PUBLIC) runCatching {
-                    val followerIds = socialRepository.fetchFollowerIds(authorId)
-                    notificationRepository.notifyNewTrip(actorId = authorId, tripId = trip.id, followerIds = followerIds)
-                }
+                // Followers of a public trip are notified by the database.
                 _state.update { it.copy(isEnding = false, endedTrip = trip) }
             } catch (e: Exception) {
                 Log.w(TAG, "Couldn't end trip $tripId", e)
@@ -635,12 +627,8 @@ class CreateTripViewModel(
             _state.update { it.copy(isPublishing = true, error = null) }
             try {
                 val trip = tripRepository.publishDraft(tripId, photoStorageRepository)
-                // An unlisted or private trip isn't announced: the notification
-                // would point followers at something they can't find or open.
-                if (trip.visibility == TripVisibility.PUBLIC) runCatching {
-                    val followerIds = socialRepository.fetchFollowerIds(authorId)
-                    notificationRepository.notifyNewTrip(actorId = authorId, tripId = trip.id, followerIds = followerIds)
-                }
+                // Followers of a public trip are notified by the database;
+                // unlisted and private trips aren't announced.
                 _state.update { it.copy(isPublishing = false, publishedTrip = trip) }
             } catch (e: Exception) {
                 Log.w(TAG, "Couldn't publish trip $tripId", e)
@@ -692,9 +680,7 @@ class CreateTripViewModel(
                     tripRepository = TripRepository(client),
                     geocodingService = GeocodingService(appContext),
                     placeSearch = PlaceSearchService(appContext),
-                    photoStorageRepository = PhotoStorageRepository(client, appContext),
-                    socialRepository = SocialRepository(client),
-                    notificationRepository = NotificationRepository(client)
+                    photoStorageRepository = PhotoStorageRepository(client, appContext)
                 )
             }
         }

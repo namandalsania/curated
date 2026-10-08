@@ -30,7 +30,12 @@ class NotificationRepository(private val client: SupabaseClient) {
     suspend fun fetchNotifications(userId: String): List<Notification> {
         val rows = postgrest.from("notifications")
             .select {
-                filter { eq("recipient_id", userId) }
+                filter {
+                    eq("recipient_id", userId)
+                    // Only types this build knows: a type added later would
+                    // otherwise fail to decode and take the whole list with it.
+                    isIn("type", NotificationType.entries.map { it.dbValue })
+                }
                 order("created_at", Order.DESCENDING)
             }
             .decodeList<Notification>()
@@ -73,54 +78,6 @@ class NotificationRepository(private val client: SupabaseClient) {
             }
     }
 
-    suspend fun notifyFollow(actorId: String, recipientId: String) {
-        if (actorId == recipientId) return
-        postgrest.from("notifications").insert(
-            NewNotificationRow(recipientId = recipientId, actorId = actorId, type = NotificationType.FOLLOW)
-        )
-    }
-
-    suspend fun notifyNewTrip(actorId: String, tripId: String, followerIds: List<String>) {
-        val recipients = followerIds.filter { it != actorId }
-        if (recipients.isEmpty()) return
-        val rows = recipients.map {
-            NewNotificationRow(recipientId = it, actorId = actorId, type = NotificationType.NEW_TRIP, tripId = tripId)
-        }
-        postgrest.from("notifications").insert(rows)
-    }
-
-    suspend fun notifyPlanInvite(actorId: String, recipientId: String, planId: String) {
-        if (actorId == recipientId) return
-        postgrest.from("notifications").insert(
-            NewNotificationRow(recipientId = recipientId, actorId = actorId, type = NotificationType.PLAN_INVITE, planId = planId)
-        )
-    }
-
-    /** Tells the trip's author someone commented on one of their places. */
-    suspend fun notifyStopComment(actorId: String, recipientId: String, tripId: String, stopId: String) {
-        if (actorId == recipientId) return
-        postgrest.from("notifications").insert(
-            NewNotificationRow(
-                recipientId = recipientId,
-                actorId = actorId,
-                type = NotificationType.STOP_COMMENT,
-                tripId = tripId,
-                stopId = stopId
-            )
-        )
-    }
-
-    /** Tells people a trip landed in their inbox. */
-    suspend fun notifyTripShare(actorId: String, recipientIds: List<String>, tripId: String) {
-        val recipients = recipientIds.filter { it != actorId }.distinct()
-        if (recipients.isEmpty()) return
-        postgrest.from("notifications").insert(
-            recipients.map {
-                NewNotificationRow(recipientId = it, actorId = actorId, type = NotificationType.TRIP_SHARE, tripId = tripId)
-            }
-        )
-    }
-
     /**
      * Opens (but does not subscribe) a fresh realtime channel for the caller to manage.
      *
@@ -148,16 +105,6 @@ class NotificationRepository(private val client: SupabaseClient) {
                 ?.toNotification()
         }
 }
-
-@Serializable
-private data class NewNotificationRow(
-    @SerialName("recipient_id") val recipientId: String,
-    @SerialName("actor_id") val actorId: String,
-    val type: NotificationType,
-    @SerialName("trip_id") val tripId: String? = null,
-    @SerialName("plan_id") val planId: String? = null,
-    @SerialName("stop_id") val stopId: String? = null
-)
 
 @Serializable
 private data class NotificationRow(

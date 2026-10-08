@@ -7,7 +7,6 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.curated.app.core.data.AuthRepository
-import com.curated.app.core.data.NotificationRepository
 import com.curated.app.core.data.ShareRepository
 import com.curated.app.core.data.SocialRepository
 import com.curated.app.core.data.SupabaseProvider
@@ -40,8 +39,7 @@ class ShareTripViewModel(
     private val tripId: String,
     private val authRepository: AuthRepository,
     private val socialRepository: SocialRepository,
-    private val shareRepository: ShareRepository,
-    private val notificationRepository: NotificationRepository
+    private val shareRepository: ShareRepository
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ShareTripState())
@@ -97,8 +95,8 @@ class ShareTripViewModel(
         _state.update { it.copy(isSending = true, error = null) }
         viewModelScope.launch {
             try {
+                // Recipients are notified by the database.
                 shareRepository.send(tripId, me, recipients, _state.value.note)
-                runCatching { notificationRepository.notifyTripShare(me, recipients, tripId) }
                 _state.update { it.copy(isSending = false, sentTo = recipients.size) }
             } catch (e: Exception) {
                 Log.w(TAG, "Couldn't share trip $tripId", e)
@@ -126,8 +124,7 @@ class ShareTripViewModel(
                     tripId = tripId,
                     authRepository = AuthRepository(client),
                     socialRepository = SocialRepository(client),
-                    shareRepository = ShareRepository(client),
-                    notificationRepository = NotificationRepository(client)
+                    shareRepository = ShareRepository(client)
                 )
             }
         }

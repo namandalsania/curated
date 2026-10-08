@@ -342,6 +342,8 @@ private fun NotificationsList(
                 val open: (() -> Unit)? = when (notification.type) {
                     NotificationType.PLAN_INVITE -> onPlanInviteClick
                     NotificationType.NEW_TRIP,
+                    NotificationType.NEW_DAY,
+                    NotificationType.LIKE,
                     NotificationType.STOP_COMMENT,
                     NotificationType.TRIP_SHARE -> notification.tripId?.let { id -> { onTripClick(id) } }
                     NotificationType.FOLLOW -> null
@@ -365,6 +367,8 @@ private fun Notification.describe(): String {
     return when (type) {
         NotificationType.FOLLOW -> "$actorName started following you."
         NotificationType.NEW_TRIP -> "$actorName published ${trip?.title ?: "a new trip"}."
+        NotificationType.NEW_DAY -> "$actorName posted a new day of ${trip?.title ?: "their trip"}."
+        NotificationType.LIKE -> "$actorName liked ${trip?.title ?: "your trip"}."
         NotificationType.PLAN_INVITE ->
             "$actorName invited you to plan ${plan?.title ?: "a trip"}. Tap to answer."
         NotificationType.STOP_COMMENT ->

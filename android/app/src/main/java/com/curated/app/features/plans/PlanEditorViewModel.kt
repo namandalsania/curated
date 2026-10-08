@@ -7,7 +7,6 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.curated.app.core.data.AuthRepository
-import com.curated.app.core.data.NotificationRepository
 import com.curated.app.core.data.PlanRepository
 import com.curated.app.core.data.SavedPlacesRepository
 import com.curated.app.core.data.SocialRepository
@@ -86,8 +85,7 @@ class PlanEditorViewModel(
     private val authRepository: AuthRepository,
     private val planRepository: PlanRepository,
     private val savedPlacesRepository: SavedPlacesRepository,
-    private val socialRepository: SocialRepository,
-    private val notificationRepository: NotificationRepository
+    private val socialRepository: SocialRepository
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(PlanEditorState())
@@ -303,8 +301,8 @@ class PlanEditorViewModel(
         if (!_state.value.isOwner) return
         _state.update { it.copy(memberSearch = MemberSearchState(), actionError = null) }
         persist {
+            // The invitee is notified by the database.
             planRepository.invite(planId, user.id, role, me)
-            runCatching { notificationRepository.notifyPlanInvite(actorId = me, recipientId = user.id, planId = planId) }
             load()
         }
     }
@@ -371,8 +369,7 @@ class PlanEditorViewModel(
                     authRepository = AuthRepository(client),
                     planRepository = PlanRepository(client),
                     savedPlacesRepository = SavedPlacesRepository(client),
-                    socialRepository = SocialRepository(client),
-                    notificationRepository = NotificationRepository(client)
+                    socialRepository = SocialRepository(client)
                 )
             }
         }

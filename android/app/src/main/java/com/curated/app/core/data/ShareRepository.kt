@@ -4,6 +4,7 @@ import com.curated.app.core.model.Trip
 import com.curated.app.core.model.TripShare
 import com.curated.app.core.model.User
 import io.github.jan.supabase.SupabaseClient
+import io.github.jan.supabase.postgrest.exception.PostgrestRestException
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.query.Order
@@ -51,13 +52,23 @@ class ShareRepository(private val client: SupabaseClient) {
             .decodeList<IdOnlyRow>()
             .size
 
+    /**
+     * Sends [tripId] to each recipient. Sending a trip someone already has from
+     * you is a success, not an error: the table allows one share per sender,
+     * recipient and trip, so the repeat is refused as a duplicate and ignored.
+     * One insert per recipient, so one repeat doesn't sink the others.
+     */
     suspend fun send(tripId: String, senderId: String, recipientIds: List<String>, note: String?) {
         val clean = note?.trim()?.takeIf { it.isNotEmpty() }
-        val rows = recipientIds.distinct().filter { it != senderId }.map {
-            NewShareRow(tripId = tripId, senderId = senderId, recipientId = it, note = clean)
+        recipientIds.distinct().filter { it != senderId }.forEach { recipientId ->
+            try {
+                postgrest.from("trip_shares").insert(
+                    NewShareRow(tripId = tripId, senderId = senderId, recipientId = recipientId, note = clean)
+                )
+            } catch (e: PostgrestRestException) {
+                if (e.code != UNIQUE_VIOLATION) throw e
+            }
         }
-        if (rows.isEmpty()) return
-        postgrest.from("trip_shares").insert(rows)
     }
 
     suspend fun markAllRead(userId: String) {
@@ -74,6 +85,9 @@ class ShareRepository(private val client: SupabaseClient) {
         postgrest.from("trip_shares").delete { filter { eq("id", shareId) } }
     }
 }
+
+/** Postgres unique_violation, as PostgREST reports it. */
+private const val UNIQUE_VIOLATION = "23505"
 
 @Serializable
 private data class IdOnlyRow(val id: String)

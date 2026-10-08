@@ -6,7 +6,6 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.curated.app.core.data.AuthRepository
-import com.curated.app.core.data.NotificationRepository
 import com.curated.app.core.data.SocialRepository
 import com.curated.app.core.data.SupabaseProvider
 import com.curated.app.core.model.User
@@ -30,8 +29,7 @@ data class FollowListUiState(
 
 class FollowListViewModel(
     private val authRepository: AuthRepository,
-    private val socialRepository: SocialRepository,
-    private val notificationRepository: NotificationRepository
+    private val socialRepository: SocialRepository
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(FollowListUiState())
@@ -75,7 +73,6 @@ class FollowListViewModel(
                     socialRepository.unfollow(viewerId, targetId)
                 } else {
                     socialRepository.follow(viewerId, targetId)
-                    runCatching { notificationRepository.notifyFollow(actorId = viewerId, recipientId = targetId) }
                 }
             } catch (e: Exception) {
                 setFollowing(targetId, wasFollowing)
@@ -100,8 +97,7 @@ class FollowListViewModel(
                 val client = SupabaseProvider.client(context.applicationContext)
                 FollowListViewModel(
                     authRepository = AuthRepository(client),
-                    socialRepository = SocialRepository(client),
-                    notificationRepository = NotificationRepository(client)
+                    socialRepository = SocialRepository(client)
                 )
             }
         }

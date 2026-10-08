@@ -8,7 +8,6 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.curated.app.core.data.AuthRepository
 import com.curated.app.core.data.EngagementRepository
-import com.curated.app.core.data.NotificationRepository
 import com.curated.app.core.data.SocialRepository
 import com.curated.app.core.data.SupabaseProvider
 import com.curated.app.core.data.TripRepository
@@ -51,7 +50,6 @@ class ProfileViewModel(
     private val socialRepository: SocialRepository,
     private val tripRepository: TripRepository,
     private val engagementRepository: EngagementRepository,
-    private val notificationRepository: NotificationRepository,
     private val geocodingService: GeocodingService
 ) : ViewModel() {
 
@@ -140,7 +138,6 @@ class ProfileViewModel(
                     }
                 } else {
                     socialRepository.follow(myId, targetId)
-                    runCatching { notificationRepository.notifyFollow(actorId = myId, recipientId = targetId) }
                     _state.update { it.copy(isFollowing = true, followerCount = it.followerCount + 1) }
                 }
             } catch (e: Exception) {
@@ -177,7 +174,6 @@ class ProfileViewModel(
                     socialRepository = SocialRepository(client),
                     tripRepository = TripRepository(client),
                     engagementRepository = EngagementRepository(client),
-                    notificationRepository = NotificationRepository(client),
                     geocodingService = GeocodingService(appContext)
                 )
             }
