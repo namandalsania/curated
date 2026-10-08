@@ -169,7 +169,14 @@ set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000004a1","role":"authenticated"}', true);
 insert into public.blocks (blocker_id, blocked_id) values ('00000000-0000-0000-0000-0000000004a1', '00000000-0000-0000-0000-0000000004a4');
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000004a4","role":"authenticated"}', true);
-insert into public.likes (user_id, trip_id) values ('00000000-0000-0000-0000-0000000004a4', '00000000-0000-0000-0000-0000000004b1');
+-- Since 20261009_likes_bookmarks_visibility the like itself is refused; before
+-- it, the like went in and only the trigger stopped the notification. Either
+-- way, nothing may reach the author.
+do $$
+begin
+  insert into public.likes (user_id, trip_id) values ('00000000-0000-0000-0000-0000000004a4', '00000000-0000-0000-0000-0000000004b1');
+exception when insufficient_privilege then null;
+end $$;
 reset role;
 -- Direct inserts, as the trigger's only line of defence: blocked -> author,
 -- and author -> blocked.
