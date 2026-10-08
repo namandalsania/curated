@@ -141,10 +141,6 @@ trip, but **anyone who has a photo's address can open that photo, whatever the
 trip's visibility**, for example if someone who could see the trip shares the
 address. Photos carry no location or other metadata (see above).
 
-[PLACEHOLDER: until the storage listing fix (migration
-20261007_storage_no_public_listing.sql) is applied, the list of photo
-addresses can also be retrieved by anyone. Remove this note once it's applied.]
-
 ### Blocking
 
 If you block someone, neither of you can see the other's trips, comments or

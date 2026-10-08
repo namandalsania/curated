@@ -76,8 +76,8 @@ in the app. If an opt-out is added later, these can become optional.
    device. Photos uploaded during testing before that build still carry GPS;
    clean them up before launch.
 2. **Photo storage.** Photo files are public by link, whatever the trip's
-   visibility. Until migration `20261007_storage_no_public_listing.sql` is
-   applied, the buckets can also be listed by anyone.
+   visibility. The buckets can't be listed (migration
+   `20261007_storage_no_public_listing.sql`, applied 2026-10-07).
 3. **Crashlytics opt-out.** Adding one would let the crash and diagnostics rows
    be marked optional.
 4. **Service providers.** Supabase, Google Maps Platform and Firebase are
