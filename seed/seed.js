@@ -11,7 +11,18 @@
 //
 // Pass --reset to delete the fake users' trips first. Rows from an older,
 // pre-idempotent run have random ids that nothing here will ever match, so that
-// is the way to clear them out.
+// is the way to clear them out. --reset deletes EVERY trip the fake users own,
+// including ones made in the app while signed in as them.
+//
+// Times are relative to today: finished trips were published over the last ~10
+// days, the live trip is two days in. Each run re-anchors them to the day it
+// runs (same day, same times), so the demo never goes stale.
+//
+// Notifications are not written here. The database makes them (triggers since
+// 20261008_notifications_from_triggers.sql) when follows, trips, posted days and
+// likes are inserted; the last step then dates each one to its content - the
+// follow, the like, the trip going up, the day being posted - instead of the
+// moment the seed ran.
 
 import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
@@ -118,24 +129,26 @@ function today() {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 }
 
-function pastStartDate(rand) {
-  // Somewhere in the last ~10 months, so trips feel recent but varied.
-  return addDays(today(), -randomInt(rand, 14, 300));
+/** [hours] before today's midnight-UTC anchor: always in the past, whenever the seed runs. */
+function hoursAgo(hours) {
+  return new Date(today().getTime() - hours * 60 * 60 * 1000);
 }
 
 /**
- * When a finished trip went up: 1-10 days after it ended, at a waking hour.
- *
- * Draws from its own rng rather than the trip's, so adding it didn't reshuffle
- * the titles, stops and photos every trip already had. Capped at yesterday, so
- * a trip that ended recently is never stamped in the future.
+ * A finished trip's timeline: published 4 hours to 10 days before today's
+ * anchor, having ended 0-2 days before that. Its own rng, so the titles, stops
+ * and photos each trip already has don't reshuffle.
  */
-function completedAtFor(tripId, endDate) {
-  const rand = rngFor('trip-completed-at', tripId);
-  const daysSinceEnd = Math.round((today() - endDate) / 86400000);
-  const at = addDays(endDate, randomInt(rand, 1, Math.max(1, Math.min(10, daysSinceEnd - 1))));
-  at.setUTCHours(randomInt(rand, 8, 22), randomInt(rand, 0, 59), 0, 0);
-  return at;
+function finishedTimeline(tripId, dayCount) {
+  const rand = rngFor('trip-timeline', tripId);
+  const completedAt = hoursAgo(randomInt(rand, 4, 240));
+  const endDate = addDays(new Date(Date.UTC(
+    completedAt.getUTCFullYear(), completedAt.getUTCMonth(), completedAt.getUTCDate()
+  )), -randomInt(rand, 0, 2));
+  const startDate = addDays(endDate, -(dayCount - 1));
+  // Written up in the hours before it went public.
+  const createdAt = new Date(completedAt.getTime() - randomInt(rand, 1, 6) * 60 * 60 * 1000);
+  return { startDate, endDate, completedAt, createdAt };
 }
 
 // ---------- step 1: fake users ----------
@@ -328,9 +341,10 @@ async function createTripForUser(user, destination, tripIndex) {
   const rand = rngFor('trip', user.username, destination.city, String(tripIndex));
 
   const dayCount = randomInt(rand, 3, 6);
-  const startDate = pastStartDate(rand);
-  const endDate = addDays(startDate, dayCount - 1);
-  const completedAt = completedAtFor(tripId, endDate);
+  // Drawn and dropped: the old start date's draw, kept so every later draw
+  // from this rng - title, tags, stops, photos - stays what it was.
+  randomInt(rand, 14, 300);
+  const { startDate, endDate, completedAt, createdAt } = finishedTimeline(tripId, dayCount);
 
   const trip = {
     id: tripId,
@@ -344,9 +358,8 @@ async function createTripForUser(user, destination, tripIndex) {
     status: 'completed',
     visibility: 'public',
     completed_at: completedAt.toISOString(),
-    // Written explicitly: left to the column default they'd read "just now"
-    // after every --reset, and the feed orders by created_at.
-    created_at: completedAt.toISOString(),
+    // Written explicitly: left to the column default they'd read "just now".
+    created_at: createdAt.toISOString(),
     updated_at: completedAt.toISOString()
   };
   const { error: tripError } = await supabase.from('trips').upsert(trip, { onConflict: 'id' });
@@ -445,11 +458,16 @@ async function createTripsForAllUsers(users) {
 
 // ---------- step 6: follow graph ----------
 
+/** When a follow happened: 1-10 days back, stable per pair. */
+function followedAt(followerId, followingId) {
+  return hoursAgo(randomInt(rngFor('follow-at', followerId, followingId), 24, 240));
+}
+
 async function insertFollow(followerId, followingId) {
   if (followerId === followingId) return false;
   const { error } = await supabase.from('follows').upsert(
-    { follower_id: followerId, following_id: followingId },
-    { onConflict: 'follower_id,following_id', ignoreDuplicates: true }
+    { follower_id: followerId, following_id: followingId, created_at: followedAt(followerId, followingId).toISOString() },
+    { onConflict: 'follower_id,following_id' }
   );
   if (error) throw error;
   return true;
@@ -494,57 +512,64 @@ async function createLikes(users, trips) {
     const user = pickOne(rand, users);
     const trip = pickOne(rand, trips);
     if (trip.author_id === user.id) continue;
-    rows.set(`${user.id}:${trip.id}`, { user_id: user.id, trip_id: trip.id });
+    // Some hours after the trip went up, never later than the anchor.
+    const after = randomInt(rngFor('like-at', user.id, trip.id), 1, 48) * 60 * 60 * 1000;
+    const at = new Date(Math.min(new Date(trip.completed_at).getTime() + after, today().getTime() - 60 * 1000));
+    rows.set(`${user.id}:${trip.id}`, { user_id: user.id, trip_id: trip.id, created_at: at.toISOString() });
   }
   if (rows.size === 0) return;
   const { error } = await supabase
     .from('likes')
-    .upsert([...rows.values()], { onConflict: 'user_id,trip_id', ignoreDuplicates: true });
+    .upsert([...rows.values()], { onConflict: 'user_id,trip_id' });
   if (error) throw error;
   console.log(`  ✓ ${rows.size} likes`);
 }
 
-async function createFollowNotifications(edges) {
-  if (edges.length === 0) return;
-  const rows = edges.map((e) => ({
-    id: stableUuid('notif-follow', e.followerId, e.followingId),
-    recipient_id: e.followingId,
-    actor_id: e.followerId,
-    type: 'follow'
-  }));
-  const { error } = await supabase.from('notifications').upsert(rows, { onConflict: 'id' });
+/**
+ * Dates the notifications the database made for seed content to that content:
+ * a follow to when it happened, a like to the like, a new trip to when it went
+ * up, a new day to when it was posted. Covers notifications from earlier runs
+ * too, so re-running brings them all to today's timeline.
+ */
+async function dateSeedNotifications(users) {
+  const ids = users.map((u) => u.id);
+  const { data: notifications, error } = await supabase
+    .from('notifications')
+    .select('id, type, recipient_id, actor_id, trip_id, day_id, created_at')
+    .in('actor_id', ids)
+    .in('type', ['follow', 'like', 'new_trip', 'new_day']);
   if (error) throw error;
-  console.log(`  ✓ ${rows.length} follow notifications`);
-}
 
-async function createNewTripNotifications(trips, allFollowEdges) {
-  // Followers-by-user, built from every follow edge we know about.
-  const followersOf = new Map();
-  for (const edge of allFollowEdges) {
-    if (!followersOf.has(edge.followingId)) followersOf.set(edge.followingId, []);
-    followersOf.get(edge.followingId).push(edge.followerId);
-  }
+  const [{ data: follows, error: fErr }, { data: likes, error: lErr }, { data: trips, error: tErr }] = await Promise.all([
+    supabase.from('follows').select('follower_id, following_id, created_at').in('follower_id', ids),
+    supabase.from('likes').select('user_id, trip_id, created_at').in('user_id', ids),
+    supabase.from('trips').select('id, completed_at, created_at').in('author_id', ids)
+  ]);
+  if (fErr || lErr || tErr) throw fErr || lErr || tErr;
+  const dayIds = notifications.filter((n) => n.day_id).map((n) => n.day_id);
+  const { data: days, error: dErr } = dayIds.length
+    ? await supabase.from('days').select('id, published_at').in('id', dayIds)
+    : { data: [], error: null };
+  if (dErr) throw dErr;
 
-  const sampleTrips = pickN(rngFor('trip-notifs'), trips, Math.min(4, trips.length));
-  const rows = [];
-  for (const trip of sampleTrips) {
-    const followers = followersOf.get(trip.author_id) ?? [];
-    for (const followerId of followers) {
-      rows.push({
-        id: stableUuid('notif-trip', followerId, trip.id),
-        recipient_id: followerId,
-        actor_id: trip.author_id,
-        type: 'new_trip',
-        trip_id: trip.id,
-        // Sent when the trip went up, not when the seed ran.
-        created_at: trip.created_at
-      });
-    }
+  const followAt = new Map(follows.map((f) => [`${f.follower_id}:${f.following_id}`, f.created_at]));
+  const likeAt = new Map(likes.map((l) => [`${l.user_id}:${l.trip_id}`, l.created_at]));
+  const tripAt = new Map(trips.map((t) => [t.id, t.completed_at ?? t.created_at]));
+  const dayAt = new Map(days.map((d) => [d.id, d.published_at]));
+
+  let changed = 0;
+  for (const n of notifications) {
+    const at =
+      n.type === 'follow' ? followAt.get(`${n.actor_id}:${n.recipient_id}`) :
+      n.type === 'like' ? likeAt.get(`${n.actor_id}:${n.trip_id}`) :
+      n.type === 'new_trip' ? tripAt.get(n.trip_id) :
+      dayAt.get(n.day_id);
+    if (!at || new Date(at).getTime() === new Date(n.created_at).getTime()) continue;
+    const { error: uErr } = await supabase.from('notifications').update({ created_at: at }).eq('id', n.id);
+    if (uErr) throw uErr;
+    changed += 1;
   }
-  if (rows.length === 0) return;
-  const { error } = await supabase.from('notifications').upsert(rows, { onConflict: 'id' });
-  if (error) throw error;
-  console.log(`  ✓ ${rows.length} new-trip notifications`);
+  console.log(`  ✓ dated ${changed} of ${notifications.length} notifications to their content`);
 }
 
 // ---------- orchestration ----------
@@ -587,15 +612,9 @@ async function main() {
     await resetSeedTrips(users);
   }
 
-  console.log('\n2-5. Creating trips, days, stops, and photos...');
-  const trips = await createTripsForAllUsers(users);
-
-  console.log('\n5b. Creating one live trip...');
-  const sofia = users.find((u) => u.username === 'wanderer_sofia') ?? users[0];
-  const bangkok = DESTINATIONS.find((d) => d.city === 'Bangkok') ?? DESTINATIONS[0];
-  const liveTrip = await createLiveTripForUser(sofia, bangkok);
-
-  console.log('\n6. Creating follow graph...');
+  // Follows first: publishing a trip or posting a day notifies whoever
+  // follows its author at that moment.
+  console.log('\n2. Creating follow graph...');
   const fakeEdges = await createFakeFollowGraph(users);
   let realEdges = [];
   if (realUser) {
@@ -603,12 +622,20 @@ async function main() {
   }
   const allEdges = [...fakeEdges, ...realEdges];
 
-  console.log('\n7. Creating likes and notifications...');
-  // Likes and new-trip notifications are about finished trips only. The live
-  // trip's own notification is the app's job, once it posts its first day.
+  console.log('\n3-5. Creating trips, days, stops, and photos...');
+  const trips = await createTripsForAllUsers(users);
+
+  console.log('\n5b. Creating one live trip...');
+  const sofia = users.find((u) => u.username === 'wanderer_sofia') ?? users[0];
+  const bangkok = DESTINATIONS.find((d) => d.city === 'Bangkok') ?? DESTINATIONS[0];
+  const liveTrip = await createLiveTripForUser(sofia, bangkok);
+
+  console.log('\n6. Creating likes...');
+  // Finished trips only: a live trip isn't in anyone's Latest yet.
   await createLikes(users, trips);
-  await createFollowNotifications(allEdges);
-  await createNewTripNotifications(trips, allEdges);
+
+  console.log('\n7. Dating notifications...');
+  await dateSeedNotifications(users);
 
   console.log('\nDone.');
   console.log(`  Users:   ${users.length}`);

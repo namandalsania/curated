@@ -32,7 +32,17 @@ never in CI, never with the key committed anywhere.
 - A partial follow graph between the fake users (not a complete graph), plus
   — if you provide your own user UUID when prompted — your account follows
   2–3 of the fake users so your Home feed has content immediately
-- A handful of likes and follow/new-trip notifications for realism
+- A handful of likes. Notifications (follows, likes, new trips, the live
+  trip's posted days) are made by the database's triggers as those rows go in;
+  the seed only re-dates them to their content afterwards
+
+### Times are relative to today
+
+Finished trips were published over the last ~10 days, each a few days after it
+ended; the live trip started two days ago with days 1-2 posted on those
+evenings. Every run re-anchors to the day it runs (midnight UTC), so the same
+day gives the same times and a later run moves everything forward. Follows,
+likes and the notifications about them are dated to fit.
 
 ## Setup
 
