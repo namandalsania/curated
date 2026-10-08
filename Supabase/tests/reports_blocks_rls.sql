@@ -1,5 +1,8 @@
 -- RLS assertions for reports and blocks.
 --
+-- Needs 20261008_notifications_from_triggers.sql applied (case 7 relies on the
+-- like trigger; clients can't insert notifications after it).
+--
 -- Run in the Supabase SQL editor after 20261005_reports_and_blocks.sql. The
 -- whole script is one transaction ending in ROLLBACK, so it leaves nothing
 -- behind - including the fixture auth users it creates.
@@ -68,7 +71,11 @@ insert into public.stop_comments (id, stop_id, trip_id, author_id, body) values
   ('00000000-0000-0000-0000-0000000001f1', '00000000-0000-0000-0000-0000000001d1',
    '00000000-0000-0000-0000-0000000001b1', '00000000-0000-0000-0000-0000000001a2', 'Lovely spot');
 
--- a2 -> a1 notification and share, made before any block.
+-- a2 -> a1 notification and share, made before any block. Since
+-- 20261008_notifications_from_triggers the follow above already made this
+-- notification; replace it with the fixed-id copy the cases below refer to.
+delete from public.notifications
+ where recipient_id = '00000000-0000-0000-0000-0000000001a1' and actor_id = '00000000-0000-0000-0000-0000000001a2';
 insert into public.notifications (id, recipient_id, actor_id, type) values
   ('00000000-0000-0000-0000-000000000191', '00000000-0000-0000-0000-0000000001a1',
    '00000000-0000-0000-0000-0000000001a2', 'follow');
@@ -383,7 +390,8 @@ reset role;
 
 -- ---------------------------------------------------------------------------
 -- Case 7: the bystander (a3) is unaffected - sees both trips and the comment,
--- and can still notify a1.
+-- and liking a1's trip still notifies a1 (made by the database since
+-- 20261008_notifications_from_triggers; clients can no longer insert them).
 -- ---------------------------------------------------------------------------
 set local role authenticated;
 set local request.jwt.claims to '{"sub":"00000000-0000-0000-0000-0000000001a3","role":"authenticated"}';
@@ -397,12 +405,20 @@ begin
   select count(*) into n from public.stop_comments where id = '00000000-0000-0000-0000-0000000001f1';
   if n <> 1 then raise exception 'FAIL 7b: the bystander should see a2''s comment, saw %', n; end if;
 
-  insert into public.notifications (recipient_id, actor_id, type)
-  values ('00000000-0000-0000-0000-0000000001a1', '00000000-0000-0000-0000-0000000001a3', 'follow');
+  insert into public.likes (user_id, trip_id)
+  values ('00000000-0000-0000-0000-0000000001a3', '00000000-0000-0000-0000-0000000001b1');
 
   raise notice 'PASS 7: a block between two people changes nothing for anyone else';
 end $$;
 reset role;
+
+do $$
+begin
+  if not exists (select 1 from public.notifications where recipient_id = '00000000-0000-0000-0000-0000000001a1'
+                 and actor_id = '00000000-0000-0000-0000-0000000001a3' and type = 'like') then
+    raise exception 'FAIL 7c: the bystander''s like should have notified a1';
+  end if;
+end $$;
 
 -- Signed out: a block between two users doesn't hide anything from anon.
 set local role anon;

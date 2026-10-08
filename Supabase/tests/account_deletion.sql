@@ -90,7 +90,12 @@ insert into public.bookmarks (user_id, trip_id) values
   ('00000000-0000-0000-0000-0000000002a2', '00000000-0000-0000-0000-0000000002b1');
 
 -- Notifications: doomed acted (the old SET NULL case), doomed received, and
--- one between the others that must survive.
+-- one between the others that must survive. Since
+-- 20261008_notifications_from_triggers the follows, likes and comments above
+-- already made notifications; clear them so these fixed-id rows are the only ones.
+delete from public.notifications
+ where recipient_id in ('00000000-0000-0000-0000-0000000002a1', '00000000-0000-0000-0000-0000000002a2',
+                        '00000000-0000-0000-0000-0000000002a3');
 insert into public.notifications (id, recipient_id, actor_id, type, trip_id) values
   ('00000000-0000-0000-0000-000000000291', '00000000-0000-0000-0000-0000000002a2',
    '00000000-0000-0000-0000-0000000002a1', 'follow', null),
