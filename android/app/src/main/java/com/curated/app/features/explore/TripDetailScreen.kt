@@ -98,7 +98,9 @@ fun TripDetailScreen(
     onAuthorClick: (String) -> Unit,
     onOpenSavedPlaces: () -> Unit,
     /** Open scrolled to this day (its number), e.g. from a live day in the feed. */
-    initialDay: Int? = null
+    initialDay: Int? = null,
+    /** Or by its `days` row, e.g. from a new-day notification. */
+    initialDayId: String? = null
 ) {
     val context = LocalContext.current
     val viewModel: TripDetailViewModel = viewModel(factory = TripDetailViewModel.factory(context))
@@ -109,9 +111,10 @@ fun TripDetailScreen(
     val listState = rememberLazyListState()
     // Once, when the days arrive: jump to the day we were opened for.
     var scrolledToDay by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(state.days, initialDay) {
-        if (scrolledToDay || initialDay == null || state.days.isEmpty()) return@LaunchedEffect
-        dayItemIndex(state.days, initialDay)?.let { listState.scrollToItem(it) }
+    LaunchedEffect(state.days, initialDay, initialDayId) {
+        if (scrolledToDay || (initialDay == null && initialDayId == null) || state.days.isEmpty()) return@LaunchedEffect
+        val item = if (initialDay != null) dayItemIndex(state.days, initialDay) else dayItemIndexOfId(state.days, initialDayId!!)
+        item?.let { listState.scrollToItem(it) }
         scrolledToDay = true
     }
     var showShare by remember { mutableStateOf(false) }
@@ -639,3 +642,7 @@ internal fun dayItemIndex(days: List<TripDaySection>, dayIndex: Int): Int? {
     }
     return null
 }
+
+/** [dayItemIndex] for the day whose `days` row is [dayId]; null if it has no stops to show. */
+internal fun dayItemIndexOfId(days: List<TripDaySection>, dayId: String): Int? =
+    days.firstOrNull { it.dayId == dayId }?.dayIndex?.let { dayItemIndex(days, it) }

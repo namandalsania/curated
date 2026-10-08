@@ -174,7 +174,8 @@ fun AppNavHost(currentUserId: String) {
                 route = AppRoutes.TRIP_DETAIL_PATTERN,
                 arguments = listOf(
                     navArgument("tripId") { type = NavType.StringType },
-                    navArgument("day") { type = NavType.IntType; defaultValue = -1 }
+                    navArgument("day") { type = NavType.IntType; defaultValue = -1 },
+                    navArgument("dayId") { type = NavType.StringType; nullable = true; defaultValue = null }
                 )
             ) { entry ->
                 val tripId = entry.arguments?.getString("tripId").orEmpty()
@@ -184,7 +185,8 @@ fun AppNavHost(currentUserId: String) {
                     onBack = { navController.popBackStack() },
                     onAuthorClick = { authorId -> navController.navigate(AppRoutes.profile(authorId)) },
                     onOpenSavedPlaces = { navController.navigate(AppRoutes.SAVED_PLACES) { launchSingleTop = true } },
-                    initialDay = initialDay
+                    initialDay = initialDay,
+                    initialDayId = entry.arguments?.getString("dayId")
                 )
             }
             composable(
@@ -233,8 +235,11 @@ fun AppNavHost(currentUserId: String) {
                 ActivityScreen(
                     initialTab = tab,
                     onBack = { navController.popBackStack() },
-                    // The day is carried for opening a trip at a day (Home, step 4); the trip page opens at the top for now.
-                    onOpenTrip = { tripId, _ -> navController.navigate(AppRoutes.tripDetail(tripId)) },
+                    onOpenTrip = { tripId, dayId ->
+                        navController.navigate(
+                            if (dayId != null) AppRoutes.tripDetailAtDayId(tripId, dayId) else AppRoutes.tripDetail(tripId)
+                        )
+                    },
                     onOpenProfile = { userId -> navController.navigate(AppRoutes.profile(userId)) },
                     onOpenPlans = { navController.navigate(AppRoutes.PLANS) { launchSingleTop = true } }
                 )

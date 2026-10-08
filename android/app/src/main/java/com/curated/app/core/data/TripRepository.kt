@@ -306,7 +306,8 @@ class TripRepository(private val client: SupabaseClient) {
                 TripDaySection(
                     dayIndex = day?.dayIndex,
                     date = day?.date ?: day?.let { trip.startDate.plus(it.dayIndex - 1, DateTimeUnit.DAY) },
-                    stops = dayStops.map { StopWithPhotos(it, photosByStop[it.id].orEmpty()) }
+                    stops = dayStops.map { StopWithPhotos(it, photosByStop[it.id].orEmpty()) },
+                    dayId = day?.id
                 )
             }
 
@@ -654,7 +655,9 @@ data class TripDetail(
 data class TripDaySection(
     val dayIndex: Int?,
     val date: LocalDate?,
-    val stops: List<StopWithPhotos>
+    val stops: List<StopWithPhotos>,
+    /** The `days` row; null for stops not on a day yet. */
+    val dayId: String? = null
 )
 
 data class StopWithPhotos(

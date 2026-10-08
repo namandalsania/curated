@@ -11,7 +11,7 @@ import org.junit.Test
 class DayItemIndexTest {
 
     private fun day(index: Int, stops: Int) = TripDaySection(
-        dayIndex = index, date = null, stops = List(stops) { stop("d$index-s$it") }
+        dayIndex = index, date = null, stops = List(stops) { stop("d$index-s$it") }, dayId = "day-$index"
     )
 
     private fun stop(id: String) = StopWithPhotos(
@@ -32,5 +32,19 @@ class DayItemIndexTest {
     fun `a day that isn't there gives nothing to scroll to`() {
         assertNull(dayItemIndex(listOf(day(1, 2)), 4))
         assertNull(dayItemIndex(emptyList(), 1))
+    }
+
+    @Test
+    fun `a day found by its row lands on that day's header`() {
+        val days = listOf(day(1, 3), day(2, 2), day(3, 4))
+        assertEquals(5, dayItemIndexOfId(days, "day-2"))
+        assertEquals(8, dayItemIndexOfId(days, "day-3"))
+    }
+
+    @Test
+    fun `a day row that isn't shown gives nothing to scroll to`() {
+        val unassigned = TripDaySection(dayIndex = null, date = null, stops = listOf(stop("loose")), dayId = null)
+        assertNull(dayItemIndexOfId(listOf(day(1, 2), unassigned), "day-9"))
+        assertNull(dayItemIndexOfId(emptyList(), "day-1"))
     }
 }
