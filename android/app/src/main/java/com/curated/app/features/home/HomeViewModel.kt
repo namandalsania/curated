@@ -337,11 +337,22 @@ class HomeViewModel(
         }
     }
 
-    fun markNotificationsRead() {
+    /**
+     * Re-reads the two badge counts - on coming back to Home, since Activity
+     * marks things read while you're away.
+     */
+    fun refreshCounts() {
         val myId = authRepository.currentUserId() ?: return
-        _state.update { it.copy(unreadCount = 0) }
         viewModelScope.launch {
-            runCatching { notificationRepository.markAllRead(myId) }
+            val notifications = runCatching { notificationRepository.fetchNotifications(myId) }.getOrNull()
+            val unreadShares = runCatching { shareRepository.unreadCount(myId) }.getOrNull()
+            _state.update {
+                it.copy(
+                    notifications = notifications ?: it.notifications,
+                    unreadCount = notifications?.count { n -> n.readAt == null } ?: it.unreadCount,
+                    unreadShares = unreadShares ?: it.unreadShares
+                )
+            }
         }
     }
 

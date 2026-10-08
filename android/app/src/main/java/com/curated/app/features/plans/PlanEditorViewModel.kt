@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.curated.app.core.data.AuthRepository
+import com.curated.app.core.data.BlockedAccounts
 import com.curated.app.core.data.PlanRepository
 import com.curated.app.core.data.SavedPlacesRepository
 import com.curated.app.core.data.SocialRepository
@@ -283,7 +284,9 @@ class PlanEditorViewModel(
         viewModelScope.launch {
             val results = runCatching { socialRepository.searchUsers(query.trim()) }.getOrElse { emptyList() }
             // Don't offer the owner, existing members, or yourself.
-            val taken = _state.value.members.map { it.userId } + listOfNotNull(_state.value.plan?.userId)
+            // Members already in, the owner, and anyone you've blocked.
+            val taken = _state.value.members.map { it.userId } + listOfNotNull(_state.value.plan?.userId) +
+                BlockedAccounts.ids.value
             _state.update { state ->
                 if (state.memberSearch.query != query) state // a newer search won
                 else state.copy(

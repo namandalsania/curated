@@ -29,6 +29,8 @@ data class Notification(
     @SerialName("trip_id") val tripId: String? = null,
     @SerialName("plan_id") val planId: String? = null,
     @SerialName("stop_id") val stopId: String? = null,
+    /** The day a [NotificationType.NEW_DAY] is about. */
+    @SerialName("day_id") val dayId: String? = null,
     @SerialName("created_at") val createdAt: Instant,
     @SerialName("read_at") val readAt: Instant? = null,
     @Transient val actor: User? = null,

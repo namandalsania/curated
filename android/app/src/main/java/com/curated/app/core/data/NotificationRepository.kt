@@ -71,10 +71,14 @@ class NotificationRepository(private val client: SupabaseClient) {
         }
     }
 
+    /** Marks what's still unread as read. Rows read earlier keep their read_at. */
     suspend fun markAllRead(userId: String) {
         postgrest.from("notifications")
             .update(mapOf("read_at" to Clock.System.now().toString())) {
-                filter { eq("recipient_id", userId) }
+                filter {
+                    eq("recipient_id", userId)
+                    exact("read_at", null)
+                }
             }
     }
 

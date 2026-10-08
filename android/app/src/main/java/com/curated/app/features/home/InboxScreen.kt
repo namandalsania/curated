@@ -13,90 +13,81 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.MoveToInbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
-import com.curated.app.core.data.BlockedAccounts
 import com.curated.app.core.model.TripShare
 import com.curated.app.designsystem.CuratedCornerRadius
 import com.curated.app.designsystem.Spacing
 import com.curated.app.designsystem.components.EmptyState
 import com.curated.app.designsystem.components.ErrorState
 import com.curated.app.designsystem.components.HairlineCard
+import com.curated.app.features.activity.nameOf
+import kotlin.time.Clock
+import kotlin.time.Instant
 
+/** The neutral line for any trip that can't be opened - private, deleted, blocked or not posted yet. */
+const val TRIP_UNAVAILABLE = "This trip isn't available."
+
+/**
+ * Trips people sent you: the "Sent to you" tab of Activity. Rows that were
+ * unread when it opened keep a tint; a trip you can't open says so, the same
+ * way whatever the reason.
+ */
 @Composable
-fun InboxScreen(onBack: () -> Unit, onOpenTrip: (String) -> Unit) {
-    val context = LocalContext.current
-    val viewModel: InboxViewModel = viewModel(factory = InboxViewModel.factory(context))
-    val rawState by viewModel.state.collectAsState()
-    // Drops blocked accounts' content already on screen; the database stops serving it.
-    val blocked by BlockedAccounts.ids.collectAsState()
-    val state = rawState.withoutAuthors(blocked)
-
-    LaunchedEffect(Unit) { viewModel.load() }
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Sent to you") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back")
-                    }
-                }
+fun SentToYouList(
+    state: InboxState,
+    onRetry: () -> Unit,
+    onOpenTrip: (String) -> Unit,
+    onUnavailable: () -> Unit,
+    onRemove: (TripShare) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val now = Clock.System.now()
+    Box(modifier = modifier.fillMaxSize()) {
+        when {
+            state.isLoading -> CircularProgressIndicator(
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.align(Alignment.Center)
             )
-        }
-    ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            when {
-                state.isLoading -> CircularProgressIndicator(
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.align(Alignment.Center)
-                )
-                state.error != null -> ErrorState(
-                    message = state.error.orEmpty(),
-                    onRetry = viewModel::load,
-                    modifier = Modifier.align(Alignment.Center)
-                )
-                state.shares.isEmpty() -> EmptyState(
-                    headline = "Nothing sent to you yet",
-                    body = "When someone sends you a trip, it lands here.",
-                    icon = Icons.Outlined.MoveToInbox,
-                    modifier = Modifier.align(Alignment.Center)
-                )
-                else -> LazyColumn(
-                    contentPadding = PaddingValues(Spacing.md),
-                    verticalArrangement = Arrangement.spacedBy(Spacing.sm)
-                ) {
-                    items(state.shares, key = { it.id }) { share ->
-                        ShareCard(
-                            share = share,
-                            onOpen = { share.tripId.let(onOpenTrip) },
-                            onRemove = { viewModel.remove(share) }
-                        )
-                    }
+            state.error != null -> ErrorState(
+                message = state.error,
+                onRetry = onRetry,
+                modifier = Modifier.align(Alignment.Center)
+            )
+            state.shares.isEmpty() -> EmptyState(
+                headline = "Nothing sent to you yet",
+                body = "When someone sends you a trip, it lands here.",
+                icon = Icons.AutoMirrored.Outlined.Send,
+                modifier = Modifier.align(Alignment.Center)
+            )
+            else -> LazyColumn(
+                contentPadding = PaddingValues(Spacing.md),
+                verticalArrangement = Arrangement.spacedBy(Spacing.sm)
+            ) {
+                items(state.shares, key = { it.id }) { share ->
+                    ShareCard(
+                        share = share,
+                        isUnread = share.id in state.unreadIds,
+                        now = now,
+                        onOpen = { if (share.trip != null) onOpenTrip(share.tripId) else onUnavailable() },
+                        onRemove = { onRemove(share) }
+                    )
                 }
             }
         }
@@ -104,13 +95,14 @@ fun InboxScreen(onBack: () -> Unit, onOpenTrip: (String) -> Unit) {
 }
 
 @Composable
-private fun ShareCard(share: TripShare, onOpen: () -> Unit, onRemove: () -> Unit) {
+private fun ShareCard(share: TripShare, isUnread: Boolean, now: Instant, onOpen: () -> Unit, onRemove: () -> Unit) {
     val trip = share.trip
     HairlineCard(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(enabled = trip != null, onClick = onOpen)
+                .then(if (isUnread) Modifier.background(MaterialTheme.colorScheme.primary.copy(alpha = 0.06f)) else Modifier)
+                .clickable(onClick = onOpen)
                 .padding(Spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
@@ -131,16 +123,22 @@ private fun ShareCard(share: TripShare, onOpen: () -> Unit, onRemove: () -> Unit
                 }
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (isUnread) {
+                        Box(Modifier.size(8.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
+                    }
+                    Text(
+                        "${nameOf(share.sender)} sent you · ${relativeTime(share.createdAt, now)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
                 Text(
-                    "${share.sender?.displayName ?: "Someone"} sent you",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    // The trip may have been deleted or made private since.
-                    trip?.title ?: "A trip that's no longer available",
+                    trip?.title ?: TRIP_UNAVAILABLE,
                     style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = if (trip != null) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )

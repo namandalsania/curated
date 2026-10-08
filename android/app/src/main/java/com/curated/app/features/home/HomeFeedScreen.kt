@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.draw.clipToBounds
@@ -53,6 +54,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.curated.app.core.data.BlockedAccounts
 import com.curated.app.core.model.Notification
@@ -65,6 +67,7 @@ import com.curated.app.designsystem.components.EmptyState
 import com.curated.app.designsystem.components.ErrorState
 import com.curated.app.designsystem.components.HairlineDivider
 import com.curated.app.designsystem.components.TripCardSkeleton
+import com.curated.app.features.activity.ActivityTab
 
 /** Load the next page when this many cards from the end. */
 private const val LOAD_MORE_THRESHOLD = 3
@@ -75,7 +78,7 @@ fun HomeFeedScreen(
     onTripClick: (String) -> Unit,
     onAuthorClick: (String) -> Unit,
     onOpenPlans: () -> Unit,
-    onOpenInbox: () -> Unit,
+    onOpenActivity: (ActivityTab) -> Unit,
     onOpenSavedPlaces: () -> Unit
 ) {
     val context = LocalContext.current
@@ -84,7 +87,6 @@ fun HomeFeedScreen(
     // Drops blocked accounts' content already on screen; the database stops serving it.
     val blocked by BlockedAccounts.ids.collectAsState()
     val state = rawState.withoutAuthors(blocked)
-    var showNotifications by remember { mutableStateOf(false) }
     var savedBannerDismissed by rememberSaveable { mutableStateOf(false) }
     val listState = rememberLazyListState()
     // enterAlways: the bar leaves on the first downward scroll and comes back the
@@ -94,6 +96,11 @@ fun HomeFeedScreen(
     LaunchedEffect(Unit) {
         viewModel.refresh()
         viewModel.startNotificationListener()
+    }
+    // Back from Activity: what it marked read shouldn't still show as a badge.
+    LifecycleResumeEffect(Unit) {
+        viewModel.refreshCounts()
+        onPauseOrDispose { }
     }
 
     // Fetch the next page as the end of the list comes into view.
@@ -116,25 +123,18 @@ fun HomeFeedScreen(
                 scrollBehavior = scrollBehavior,
                 title = { Text("Home") },
                 actions = {
-                    IconButton(onClick = onOpenInbox) {
+                    IconButton(onClick = { onOpenActivity(ActivityTab.SENT) }) {
                         BadgedBox(badge = {
-                            if (state.unreadShares > 0) {
-                                Badge { Text("${state.unreadShares}") }
-                            }
+                            if (state.unreadShares > 0) Badge { Text(badgeText(state.unreadShares)) }
                         }) {
-                            Icon(Icons.Outlined.MoveToInbox, contentDescription = "Trips sent to you")
+                            Icon(Icons.AutoMirrored.Outlined.Send, contentDescription = "Trips sent to you")
                         }
                     }
-                    IconButton(onClick = {
-                        showNotifications = true
-                        viewModel.markNotificationsRead()
-                    }) {
+                    IconButton(onClick = { onOpenActivity(ActivityTab.ACTIVITY) }) {
                         BadgedBox(badge = {
-                            if (state.unreadCount > 0) {
-                                Badge { Text("${state.unreadCount}") }
-                            }
+                            if (state.unreadCount > 0) Badge { Text(badgeText(state.unreadCount)) }
                         }) {
-                            Icon(Icons.Outlined.Notifications, contentDescription = "Notifications")
+                            Icon(Icons.Outlined.Notifications, contentDescription = "Activity")
                         }
                     }
                 }
@@ -237,28 +237,6 @@ fun HomeFeedScreen(
             }
         }
     }
-
-    if (showNotifications) {
-        val sheetState = rememberModalBottomSheetState()
-        ModalBottomSheet(
-            onDismissRequest = { showNotifications = false },
-            sheetState = sheetState,
-            shape = RoundedCornerShape(topStart = CuratedCornerRadius, topEnd = CuratedCornerRadius),
-            containerColor = MaterialTheme.colorScheme.surface
-        ) {
-            NotificationsList(
-                notifications = state.notifications,
-                onPlanInviteClick = {
-                    showNotifications = false
-                    onOpenPlans()
-                },
-                onTripClick = { tripId ->
-                    showNotifications = false
-                    onTripClick(tripId)
-                }
-            )
-        }
-    }
 }
 
 @Composable
@@ -318,62 +296,5 @@ private val TabIndicatorWidth = 64.dp
 /** The tab row's natural height, collapsed towards zero as the app bar retracts. */
 private val TabRowHeight = 48.dp
 
-@Composable
-private fun NotificationsList(
-    notifications: List<Notification>,
-    onPlanInviteClick: () -> Unit,
-    onTripClick: (String) -> Unit
-) {
-    Column(modifier = Modifier.fillMaxWidth().padding(bottom = Spacing.lg)) {
-        Text(
-            "Notifications",
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(Spacing.md)
-        )
-        if (notifications.isEmpty()) {
-            Text(
-                "Nothing yet — you'll see follows, new trips, comments and plan invites here.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = Spacing.md)
-            )
-        } else {
-            notifications.forEach { notification ->
-                val open: (() -> Unit)? = when (notification.type) {
-                    NotificationType.PLAN_INVITE -> onPlanInviteClick
-                    NotificationType.NEW_TRIP,
-                    NotificationType.NEW_DAY,
-                    NotificationType.LIKE,
-                    NotificationType.STOP_COMMENT,
-                    NotificationType.TRIP_SHARE -> notification.tripId?.let { id -> { onTripClick(id) } }
-                    NotificationType.FOLLOW -> null
-                }
-                Text(
-                    notification.describe(),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .then(if (open != null) Modifier.clickable(onClick = open) else Modifier)
-                        .padding(horizontal = Spacing.md, vertical = Spacing.sm)
-                )
-                HairlineDivider()
-            }
-        }
-    }
-}
-
-private fun Notification.describe(): String {
-    val actorName = actor?.displayName ?: "Someone"
-    return when (type) {
-        NotificationType.FOLLOW -> "$actorName started following you."
-        NotificationType.NEW_TRIP -> "$actorName published ${trip?.title ?: "a new trip"}."
-        NotificationType.NEW_DAY -> "$actorName posted a new day of ${trip?.title ?: "their trip"}."
-        NotificationType.LIKE -> "$actorName liked ${trip?.title ?: "your trip"}."
-        NotificationType.PLAN_INVITE ->
-            "$actorName invited you to plan ${plan?.title ?: "a trip"}. Tap to answer."
-        NotificationType.STOP_COMMENT ->
-            "$actorName commented on a place in ${trip?.title ?: "your trip"}."
-        NotificationType.TRIP_SHARE ->
-            "$actorName sent you ${trip?.title ?: "a trip"}."
-    }
-}
+/** A badge's count, capped so it stays a badge. */
+internal fun badgeText(count: Int): String = if (count > 9) "9+" else count.toString()

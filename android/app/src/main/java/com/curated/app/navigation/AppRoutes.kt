@@ -1,5 +1,6 @@
 package com.curated.app.navigation
 
+import com.curated.app.features.activity.ActivityTab
 import com.curated.app.features.profile.FollowListKind
 
 object AppRoutes {
@@ -9,7 +10,7 @@ object AppRoutes {
     const val PROFILE_PATTERN = "profile/{userId}"
     const val FOLLOW_LIST_PATTERN = "follow_list/{userId}/{kind}"
     const val EDIT_PROFILE = "edit_profile"
-    const val INBOX = "inbox"
+    const val ACTIVITY_PATTERN = "activity/{tab}"
     const val SAVED_PLACES = "saved_places"
     const val PLANS = "plans"
     const val BLOCKED_ACCOUNTS = "blocked_accounts"
@@ -21,6 +22,7 @@ object AppRoutes {
     const val PROFILE_RELOAD_KEY = "profile_reload"
 
     fun tripDetail(tripId: String) = "trip_detail/$tripId"
+    fun activity(tab: ActivityTab) = "activity/${tab.name}"
     fun profile(userId: String) = "profile/$userId"
     fun followList(userId: String, kind: FollowListKind) = "follow_list/$userId/${kind.name}"
     fun planEditor(planId: String) = "plan/$planId"

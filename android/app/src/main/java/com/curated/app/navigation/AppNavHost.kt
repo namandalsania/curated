@@ -39,12 +39,13 @@ import androidx.navigation.NavType
 import com.curated.app.core.data.BlockedAccounts
 import com.curated.app.core.data.ModerationRepository
 import com.curated.app.core.data.SupabaseProvider
+import com.curated.app.features.activity.ActivityScreen
+import com.curated.app.features.activity.ActivityTab
 import com.curated.app.features.create.CreateRoutes
 import com.curated.app.features.create.createNavGraph
 import com.curated.app.features.explore.ExploreScreen
 import com.curated.app.features.explore.TripDetailScreen
 import com.curated.app.features.home.HomeFeedScreen
-import com.curated.app.features.home.InboxScreen
 import com.curated.app.features.moderation.BlockedAccountsScreen
 import com.curated.app.features.plans.PlanEditorScreen
 import com.curated.app.features.plans.PlansScreen
@@ -151,7 +152,7 @@ fun AppNavHost(currentUserId: String) {
                     onTripClick = { tripId -> navController.navigate(AppRoutes.tripDetail(tripId)) },
                     onAuthorClick = { authorId -> navController.navigate(AppRoutes.profile(authorId)) },
                     onOpenPlans = { navController.navigate(AppRoutes.PLANS) { launchSingleTop = true } },
-                    onOpenInbox = { navController.navigate(AppRoutes.INBOX) { launchSingleTop = true } },
+                    onOpenActivity = { tab -> navController.navigate(AppRoutes.activity(tab)) { launchSingleTop = true } },
                     onOpenSavedPlaces = { navController.navigate(AppRoutes.SAVED_PLACES) { launchSingleTop = true } }
                 )
             }
@@ -210,10 +211,20 @@ fun AppNavHost(currentUserId: String) {
             composable(AppRoutes.DELETE_ACCOUNT) {
                 DeleteAccountScreen(onBack = { navController.popBackStack() })
             }
-            composable(AppRoutes.INBOX) {
-                InboxScreen(
+            composable(
+                route = AppRoutes.ACTIVITY_PATTERN,
+                arguments = listOf(navArgument("tab") { type = NavType.StringType })
+            ) { entry ->
+                val tab = entry.arguments?.getString("tab")
+                    ?.let { name -> ActivityTab.entries.firstOrNull { it.name == name } }
+                    ?: ActivityTab.ACTIVITY
+                ActivityScreen(
+                    initialTab = tab,
                     onBack = { navController.popBackStack() },
-                    onOpenTrip = { tripId -> navController.navigate(AppRoutes.tripDetail(tripId)) }
+                    // The day is carried for opening a trip at a day (Home, step 4); the trip page opens at the top for now.
+                    onOpenTrip = { tripId, _ -> navController.navigate(AppRoutes.tripDetail(tripId)) },
+                    onOpenProfile = { userId -> navController.navigate(AppRoutes.profile(userId)) },
+                    onOpenPlans = { navController.navigate(AppRoutes.PLANS) { launchSingleTop = true } }
                 )
             }
             composable(AppRoutes.SAVED_PLACES) {

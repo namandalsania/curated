@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.curated.app.core.data.AuthRepository
+import com.curated.app.core.data.BlockedAccounts
 import com.curated.app.core.data.ShareRepository
 import com.curated.app.core.data.SocialRepository
 import com.curated.app.core.data.SupabaseProvider
@@ -58,7 +59,9 @@ class ShareTripViewModel(
                     .distinct()
                     .filter { it != me }
                 val people = socialRepository.fetchUsers(ids).sortedBy { it.displayName.lowercase() }
-                _state.update { it.copy(isLoading = false, people = people) }
+                // Nobody you've blocked, on your side of the picker either.
+                val blocked = BlockedAccounts.ids.value
+                _state.update { it.copy(isLoading = false, people = people.filter { p -> p.id !in blocked }) }
             } catch (e: Exception) {
                 Log.w(TAG, "Couldn't load people to share with", e)
                 _state.update { it.copy(isLoading = false, error = "Couldn't load your people.") }
@@ -77,7 +80,7 @@ class ShareTripViewModel(
             val results = runCatching { socialRepository.searchUsers(query.trim()) }.getOrElse { emptyList() }
             _state.update { state ->
                 if (state.query != query) state // a newer search won
-                else state.copy(searchResults = results.filter { it.id != me })
+                else state.copy(searchResults = results.filter { it.id != me && it.id !in BlockedAccounts.ids.value })
             }
         }
     }

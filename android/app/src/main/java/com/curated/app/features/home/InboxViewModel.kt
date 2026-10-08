@@ -18,6 +18,8 @@ import kotlinx.coroutines.launch
 data class InboxState(
     val isLoading: Boolean = true,
     val shares: List<TripShare> = emptyList(),
+    /** Unread when this opened - kept after marking read, so the tint stays while you look. */
+    val unreadIds: Set<String> = emptySet(),
     val error: String? = null
 )
 
@@ -36,9 +38,10 @@ class InboxViewModel(
             _state.update { it.copy(isLoading = it.shares.isEmpty(), error = null) }
             try {
                 val shares = shareRepository.fetchInbox(me)
-                _state.update { it.copy(isLoading = false, shares = shares) }
-                // Opening the inbox is what counts as reading it.
-                runCatching { shareRepository.markAllRead(me) }
+                // Capture what's unread first, then mark it read: opening is reading.
+                val newlyUnread = shares.filter { it.readAt == null }.map { it.id }.toSet()
+                _state.update { it.copy(isLoading = false, shares = shares, unreadIds = it.unreadIds + newlyUnread) }
+                if (newlyUnread.isNotEmpty()) runCatching { shareRepository.markAllRead(me) }
             } catch (e: Exception) {
                 Log.w(TAG, "Couldn't load the inbox", e)
                 _state.update { it.copy(isLoading = false, error = "Couldn't load what people sent you.") }

@@ -33,6 +33,7 @@ import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
@@ -49,6 +50,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -85,6 +87,7 @@ import com.curated.app.features.moderation.rememberModerationViewModel
 import com.curated.app.features.trip.TripVisibilityPicker
 import com.curated.app.features.trip.explanation
 import com.curated.app.features.trip.label
+import kotlinx.coroutines.launch
 
 @Composable
 fun TripDetailScreen(
@@ -97,6 +100,7 @@ fun TripDetailScreen(
     val viewModel: TripDetailViewModel = viewModel(factory = TripDetailViewModel.factory(context))
     val state by viewModel.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
     var openComments by remember { mutableStateOf<StopWithPhotos?>(null) }
     var showShare by remember { mutableStateOf(false) }
     var showVisibility by remember { mutableStateOf(false) }
@@ -170,9 +174,24 @@ fun TripDetailScreen(
                     }
                 },
                 actions = {
-                    if (state.trip != null) {
-                        IconButton(onClick = { showShare = true }) {
-                            Icon(Icons.Outlined.Share, contentDescription = "Send this trip to someone")
+                    val shareable = state.trip
+                    if (shareable != null) {
+                        // Only the owner sees a private trip, and nobody they sent it to could
+                        // open it - so Share is shown dimmed, and says what to do instead.
+                        val isPrivate = shareable.visibility == TripVisibility.PRIVATE
+                        IconButton(onClick = {
+                            if (isPrivate) {
+                                scope.launch { snackbarHostState.showSnackbar(PRIVATE_SHARE_HINT) }
+                            } else {
+                                showShare = true
+                            }
+                        }) {
+                            Icon(
+                                Icons.Outlined.Share,
+                                contentDescription = if (isPrivate) "Sharing is off for private trips" else "Send this trip to someone",
+                                tint = if (isPrivate) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                                else LocalContentColor.current
+                            )
                         }
                     }
                     val shown = state.trip
@@ -590,3 +609,6 @@ private fun StopPhotoCarousel(urls: List<String>, contentDescription: String) {
         }
     }
 }
+
+/** Why Share does nothing on a private trip, and the way round it. */
+internal const val PRIVATE_SHARE_HINT = "Private trips can't be shared. Make it unlisted first, then send it."
