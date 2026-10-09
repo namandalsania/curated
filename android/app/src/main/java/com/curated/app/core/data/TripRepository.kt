@@ -58,8 +58,12 @@ class TripRepository(private val client: SupabaseClient) {
     suspend fun fetchTripMapPinsFor(trips: List<Trip>): List<TripMapPin> = tripMapPins(trips)
 
     /** Every stop's position across these trips - the profile groups them into cities. */
-    suspend fun fetchStopPointsFor(trips: List<Trip>): List<StopPoint> =
-        fetchStopLocations(trips).map { StopPoint(tripId = it.tripId, latitude = it.latitude, longitude = it.longitude) }
+    suspend fun fetchStopPointsFor(trips: List<Trip>): List<StopPoint> {
+        val endById = trips.associate { it.id to it.endDate }
+        return fetchStopLocations(trips).map {
+            StopPoint(tripId = it.tripId, latitude = it.latitude, longitude = it.longitude, tripEnd = endById[it.tripId])
+        }
+    }
 
     private suspend fun fetchStopLocations(trips: List<Trip>): List<StopLocationRow> {
         if (trips.isEmpty()) return emptyList()
@@ -666,7 +670,9 @@ data class TripMapPin(
 data class StopPoint(
     val tripId: String,
     val latitude: Double,
-    val longitude: Double
+    val longitude: Double,
+    /** When the stop's trip ended - how recent a visit to that country was. */
+    val tripEnd: LocalDate? = null
 )
 
 data class TripCompleteness(

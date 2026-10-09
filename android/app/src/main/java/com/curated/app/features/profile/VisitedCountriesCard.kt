@@ -4,11 +4,15 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -44,13 +48,16 @@ import com.curated.app.designsystem.components.SkeletonBox
 /** Width / height of assets/world_map.json, so the skeleton matches the map it stands in for. */
 private const val MAP_ASPECT_RATIO = 16000f / 7115f
 
-/** City names shown on a chip before it switches to "+N". */
-private const val CHIP_CITY_LIMIT = 2
+/** Wide enough for most names; a longer one ellipsizes instead of taking the row. */
+private val CountryChipMaxWidth = 168.dp
+
+/** City names under a country in the "all countries" sheet before "+N". */
+private const val SHEET_CITY_LIMIT = 3
 
 /**
  * Stippl-style "where I've been": headline stats, a flat world map with
- * visited countries filled in, and a chip per country naming its cities.
- * Tapping a chip zooms into that country.
+ * visited countries filled in, and a chip for each of the top countries.
+ * Tapping a chip zooms into that country; "+N more" lists them all.
  */
 @Composable
 fun VisitedCountriesCard(
@@ -63,8 +70,9 @@ fun VisitedCountriesCard(
     val map by produceState<WorldMapData?>(initialValue = null) {
         value = runCatching { WorldMaps.load(context) }.getOrNull()
     }
-    val sorted = visits.sortedWith(compareByDescending<CountryVisit> { it.tripCount }.thenBy { it.country })
+    val chips = countryChips(visits)
     var openCountry by remember { mutableStateOf<CountryVisit?>(null) }
+    var showAll by remember { mutableStateOf(false) }
 
     HairlineCard(modifier = modifier.fillMaxWidth()) {
         Column(
@@ -105,7 +113,7 @@ fun VisitedCountriesCard(
 
             when {
                 isLoading -> Unit
-                sorted.isEmpty() -> Text(
+                visits.isEmpty() -> Text(
                     if (isOwnProfile) {
                         "Publish a trip and the countries you've been to fill in here."
                     } else {
@@ -118,16 +126,36 @@ fun VisitedCountriesCard(
                     horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
                     verticalArrangement = Arrangement.spacedBy(Spacing.xs)
                 ) {
-                    sorted.forEach { visit ->
+                    chips.shown.forEach { visit ->
                         CountryChip(visit, onClick = { openCountry = visit })
                     }
+                    if (chips.more > 0) MoreChip(chips.more, onClick = { showAll = true })
                 }
             }
         }
     }
 
-    val shownCountry = openCountry
     val loadedMap = map
+    if (showAll) {
+        ModalBottomSheet(
+            onDismissRequest = { showAll = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            shape = RoundedCornerShape(topStart = CuratedCornerRadius, topEnd = CuratedCornerRadius),
+            containerColor = MaterialTheme.colorScheme.surface
+        ) {
+            AllCountriesSheetContent(
+                // Until the map's continent table is in, everything sits under "Elsewhere".
+                groups = groupByContinent(visits, loadedMap?.continentOf.orEmpty()),
+                total = visits.size,
+                onCountryClick = { visit ->
+                    showAll = false
+                    openCountry = visit
+                }
+            )
+        }
+    }
+
+    val shownCountry = openCountry
     if (shownCountry != null && loadedMap != null) {
         ModalBottomSheet(
             onDismissRequest = { openCountry = null },
@@ -205,6 +233,83 @@ private fun CountrySheetContent(map: WorldMapData, visit: CountryVisit) {
     }
 }
 
+/** Every country, under its continent, with its trip count; scrolls inside the sheet. */
+@Composable
+internal fun AllCountriesSheetContent(
+    groups: List<ContinentGroup>,
+    total: Int,
+    onCountryClick: (CountryVisit) -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(start = Spacing.md, end = Spacing.md, bottom = Spacing.lg)
+    ) {
+        item(key = "title") {
+            Text(
+                "$total ${if (total == 1) "country" else "countries"} visited",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(bottom = Spacing.sm)
+            )
+        }
+        groups.forEach { group ->
+            item(key = "continent-${group.title}") {
+                Text(
+                    group.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = Spacing.md, bottom = Spacing.xs)
+                )
+            }
+            itemsIndexed(group.countries, key = { _, visit -> "country-${visit.countryCode ?: visit.country}" }) { index, visit ->
+                if (index > 0) HairlineDivider()
+                CountryRow(visit, onClick = { onCountryClick(visit) })
+            }
+        }
+    }
+}
+
+/** "🇮🇹 Italy" over "Rome, Florence, Venice +2", and "4 trips" on the right. */
+@Composable
+private fun CountryRow(visit: CountryVisit, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClickLabel = "Show ${visit.country}", onClick = onClick)
+            .padding(vertical = Spacing.sm),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                countryTitle(visit),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (visit.cities.isNotEmpty()) {
+                Text(
+                    buildString {
+                        append(visit.cities.take(SHEET_CITY_LIMIT).joinToString { it.name })
+                        val more = visit.cities.size - SHEET_CITY_LIMIT
+                        if (more > 0) append(" +").append(more)
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        Text(
+            countText(visit.tripCount, Noun.TRIP),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = Spacing.sm)
+        )
+    }
+}
+
 @Composable
 private fun Stat(value: String, label: String, modifier: Modifier = Modifier) {
     Column(modifier = modifier) {
@@ -222,18 +327,20 @@ private fun Stat(value: String, label: String, modifier: Modifier = Modifier) {
     }
 }
 
-/** "🇮🇹 Italy · Rome, Florence +1" */
+/** "🇮🇹 Italy" - the country only; its cities are in the sheet. */
 @Composable
 private fun CountryChip(visit: CountryVisit, onClick: () -> Unit) {
-    val label = buildString {
-        append(countryTitle(visit))
-        if (visit.cities.isNotEmpty()) {
-            append(" · ")
-            append(visit.cities.take(CHIP_CITY_LIMIT).joinToString { it.name })
-            val more = visit.cities.size - CHIP_CITY_LIMIT
-            if (more > 0) append(" +").append(more)
-        }
-    }
+    ChipText(countryTitle(visit), onClickLabel = "Show ${visit.country}", onClick = onClick)
+}
+
+/** "+20 more" - opens every country, by continent. */
+@Composable
+private fun MoreChip(more: Int, onClick: () -> Unit) {
+    ChipText("+$more more", onClickLabel = "Show all countries", onClick = onClick)
+}
+
+@Composable
+private fun ChipText(label: String, onClickLabel: String, onClick: () -> Unit) {
     Text(
         label,
         style = MaterialTheme.typography.labelMedium,
@@ -241,9 +348,10 @@ private fun CountryChip(visit: CountryVisit, onClick: () -> Unit) {
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier = Modifier
+            .widthIn(max = CountryChipMaxWidth)
             .clip(RoundedCornerShape(CuratedCornerRadius))
             .background(MaterialTheme.colorScheme.surfaceVariant)
-            .clickable(onClickLabel = "Show ${visit.country}", onClick = onClick)
+            .clickable(onClickLabel = onClickLabel, onClick = onClick)
             .padding(horizontal = Spacing.sm, vertical = 6.dp)
     )
 }

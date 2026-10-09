@@ -18,6 +18,7 @@ import com.curated.app.core.geocode.GeocodingService
 import com.curated.app.core.geocode.PlaceRef
 import com.curated.app.core.util.haversineMeters
 import com.google.android.gms.maps.model.LatLng
+import kotlinx.datetime.LocalDate
 
 /** One country's worth of trips, aggregated for display as a single sized pin. */
 data class CountryVisit(
@@ -29,7 +30,9 @@ data class CountryVisit(
     val longitude: Double,
     val tripCount: Int,
     /** Only filled by [CityAggregator] (the profile); Explore works at country level. */
-    val cities: List<CityVisit> = emptyList()
+    val cities: List<CityVisit> = emptyList(),
+    /** When the latest trip there ended; the profile ranks ties by it. [CityAggregator] only. */
+    val lastTripEnd: LocalDate? = null
 )
 
 /** One city within a [CountryVisit]: where the stops actually were. */
@@ -96,7 +99,8 @@ object CityAggregator {
                 latitude = countryStops.map { it.latitude }.average(),
                 longitude = countryStops.map { it.longitude }.average(),
                 tripCount = countryStops.distinctBy { it.tripId }.size,
-                cities = cities
+                cities = cities,
+                lastTripEnd = countryStops.mapNotNull { it.tripEnd }.maxOrNull()
             )
         }
     }
