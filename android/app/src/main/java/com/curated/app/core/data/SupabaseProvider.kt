@@ -15,6 +15,12 @@ import kotlinx.serialization.json.Json
 /** Lazily builds a single [SupabaseClient] shared across the app. */
 object SupabaseProvider {
 
+    /**
+     * How every response is decoded - Postgrest selects and Realtime records
+     * alike, so a row reads the same whichever way it arrives.
+     */
+    val serializer = KotlinXSerializer(Json { ignoreUnknownKeys = true })
+
     @Volatile
     private var instance: SupabaseClient? = null
 
@@ -26,7 +32,7 @@ object SupabaseProvider {
 
     private fun buildClient(): SupabaseClient {
         return createSupabaseClient(supabaseUrl = BuildConfig.SUPABASE_URL, supabaseKey = BuildConfig.SUPABASE_ANON_KEY) {
-            defaultSerializer = KotlinXSerializer(Json { ignoreUnknownKeys = true })
+            defaultSerializer = serializer
             install(Postgrest)
             install(Auth)
             install(Storage)

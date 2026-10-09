@@ -6,6 +6,8 @@ import com.curated.app.core.model.Plan
 import com.curated.app.core.model.Trip
 import com.curated.app.core.model.User
 import io.github.jan.supabase.SupabaseClient
+import io.github.jan.supabase.SupabaseSerializer
+import io.github.jan.supabase.decode
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.query.Order
@@ -16,16 +18,12 @@ import io.github.jan.supabase.realtime.postgresChangeFlow
 import io.github.jan.supabase.realtime.realtime
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.serialization.json.JsonObject
 import kotlin.time.Clock
-import kotlinx.datetime.Instant
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 
 class NotificationRepository(private val client: SupabaseClient) {
 
     private val postgrest get() = client.postgrest
-    private val decodeJson = Json { ignoreUnknownKeys = true }
 
     suspend fun fetchNotifications(userId: String): List<Notification> {
         val rows = postgrest.from("notifications")
@@ -108,34 +106,15 @@ class NotificationRepository(private val client: SupabaseClient) {
         channel.postgresChangeFlow<PostgresAction.Insert>(schema = "public") {
             table = "notifications"
         }.mapNotNull { action ->
-            runCatching { decodeJson.decodeFromJsonElement(NotificationRow.serializer(), action.record) }
-                .getOrNull()
+            decodeNotificationRecord(client.defaultSerializer, action.record)
                 ?.takeIf { it.recipientId == recipientId }
-                ?.toNotification()
         }
 }
 
-@Serializable
-private data class NotificationRow(
-    val id: String,
-    @SerialName("recipient_id") val recipientId: String,
-    @SerialName("actor_id") val actorId: String? = null,
-    val type: NotificationType,
-    @SerialName("trip_id") val tripId: String? = null,
-    @SerialName("plan_id") val planId: String? = null,
-    @SerialName("stop_id") val stopId: String? = null,
-    @SerialName("created_at") val createdAt: Instant,
-    @SerialName("read_at") val readAt: Instant? = null
-) {
-    fun toNotification() = Notification(
-        id = id,
-        recipientId = recipientId,
-        actorId = actorId,
-        type = type,
-        tripId = tripId,
-        planId = planId,
-        stopId = stopId,
-        createdAt = createdAt,
-        readAt = readAt
-    )
-}
+/**
+ * A Realtime insert's record as a [Notification], with the decoder the fetched
+ * path uses - a separate row class here once dropped day_id. Null if it doesn't
+ * decode (a type this build doesn't know, say).
+ */
+internal fun decodeNotificationRecord(serializer: SupabaseSerializer, record: JsonObject): Notification? =
+    runCatching { serializer.decode<Notification>(record.toString()) }.getOrNull()
