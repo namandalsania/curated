@@ -130,6 +130,15 @@ class ActivityItemsTest {
     }
 
     @Test
+    fun `a new day shows that day's first photo, or the trip cover without one`() {
+        val withPhoto = n(NotificationType.NEW_DAY, "sofia", now - 1.hours, tokyo)
+            .copy(dayId = "d3", dayCoverUrl = "https://example.invalid/d3.jpg")
+        val without = n(NotificationType.NEW_DAY, "sofia", now - 2.hours, tokyo).copy(dayId = "d4")
+        val rows = buildActivity(listOf(withPhoto, without), emptySet(), now, zone).single().second
+        assertEquals(listOf("https://example.invalid/d3.jpg", tokyo.coverPhotoUrl), rows.map { it.thumbnailUrl })
+    }
+
+    @Test
     fun `follow back only for a single follower you don't follow yet`() {
         val one = buildActivity(listOf(n(NotificationType.FOLLOW, "kai", now)), emptySet(), now, zone).single().second.single()
         assertTrue(one.canFollowBack(following = emptySet()))

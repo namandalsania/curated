@@ -35,5 +35,7 @@ data class Notification(
     @SerialName("read_at") val readAt: Instant? = null,
     @Transient val actor: User? = null,
     @Transient val trip: Trip? = null,
-    @Transient val plan: Plan? = null
+    @Transient val plan: Plan? = null,
+    /** A [NotificationType.NEW_DAY]'s first photo, when the day has one. */
+    @Transient val dayCoverUrl: String? = null
 )

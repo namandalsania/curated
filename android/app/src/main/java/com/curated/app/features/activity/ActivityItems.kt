@@ -40,6 +40,7 @@ data class ActivityItem(
     val tripId: String?,
     val plan: Plan?,
     val dayId: String?,
+    val dayCoverUrl: String? = null,
     val latestAt: Instant,
     val isUnread: Boolean
 ) {
@@ -81,8 +82,8 @@ data class ActivityItem(
             else -> if (trip != null && tripId != null) ActivityTarget.Trip(tripId) else ActivityTarget.Unavailable
         }
 
-    /** Trip rows show its cover on the right. */
-    val thumbnailUrl: String? get() = trip?.coverPhotoUrl
+    /** Trip rows show its cover on the right; a new day shows that day's first photo. */
+    val thumbnailUrl: String? get() = dayCoverUrl ?: trip?.coverPhotoUrl
 
     /** Only a single follower gets an inline Follow back, and only if you don't follow them yet. */
     fun canFollowBack(following: Set<String>): Boolean =
@@ -149,6 +150,7 @@ private fun toItem(key: String, group: List<Notification>, unreadIds: Set<String
         tripId = newest.tripId,
         plan = newest.plan,
         dayId = newest.dayId,
+        dayCoverUrl = newest.dayCoverUrl,
         latestAt = newest.createdAt,
         isUnread = group.any { it.id in unreadIds }
     )

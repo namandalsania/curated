@@ -239,20 +239,12 @@ class TripRepository(private val client: SupabaseClient) {
         if (rows.isEmpty()) return emptyList()
 
         // Each day's places, in order, with their photos - for its names and cover.
-        val stops = postgrest.from("stops")
-            .select(columns = Columns.raw("day_id,name,order_in_day,stop_photos(storage_path,order_index)")) {
-                filter { isIn("day_id", rows.map { it.id }) }
-            }
-            .decodeList<DayStopRow>()
-            .groupBy { it.dayId }
-            .mapValues { (_, list) -> list.sortedBy { it.orderInDay } }
+        val stops = fetchDayStops(client, rows.map { it.id })
 
         return rows.mapNotNull { row ->
             val publishedAt = row.publishedAt ?: return@mapNotNull null
             val dayStops = stops[row.id].orEmpty()
-            val cover = dayStops.asSequence()
-                .flatMap { stop -> stop.photos.sortedBy { it.orderIndex }.asSequence() }
-                .firstOrNull()?.storagePath
+            val cover = dayCoverPath(dayStops)
             PostedLiveDay(
                 dayId = row.id,
                 dayIndex = row.dayIndex,
@@ -866,8 +858,32 @@ private data class PostedDayRow(
     val trip: Trip
 )
 
+/** [dayIds]' places, each day's in order, with their photos. */
+private suspend fun fetchDayStops(client: SupabaseClient, dayIds: List<String>): Map<String, List<DayStopRow>> =
+    client.postgrest.from("stops")
+        .select(columns = Columns.raw("day_id,name,order_in_day,stop_photos(storage_path,order_index)")) {
+            filter { isIn("day_id", dayIds) }
+        }
+        .decodeList<DayStopRow>()
+        .groupBy { it.dayId }
+        .mapValues { (_, list) -> list.sortedBy { it.orderInDay } }
+
+/** A day's cover: its first place's first photo, or the next place's if that one has none. */
+internal fun dayCoverPath(stops: List<DayStopRow>): String? =
+    stops.asSequence()
+        .flatMap { stop -> stop.photos.sortedBy { it.orderIndex }.asSequence() }
+        .firstOrNull()?.storagePath
+
+/** Each of [dayIds]' cover photo, as a loadable URL; days without a photo are left out. */
+suspend fun fetchDayCoverUrls(client: SupabaseClient, dayIds: List<String>): Map<String, String> {
+    if (dayIds.isEmpty()) return emptyMap()
+    return fetchDayStops(client, dayIds).mapNotNull { (dayId, stops) ->
+        dayCoverPath(stops)?.let { dayId to resolvePhotoUrl(client, it) }
+    }.toMap()
+}
+
 @Serializable
-private data class DayStopRow(
+internal data class DayStopRow(
     @SerialName("day_id") val dayId: String,
     val name: String,
     @SerialName("order_in_day") val orderInDay: Int,
@@ -875,7 +891,7 @@ private data class DayStopRow(
 )
 
 @Serializable
-private data class DayStopPhotoRow(
+internal data class DayStopPhotoRow(
     @SerialName("storage_path") val storagePath: String,
     @SerialName("order_index") val orderIndex: Int
 )

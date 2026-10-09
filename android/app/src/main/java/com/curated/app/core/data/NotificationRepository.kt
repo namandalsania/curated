@@ -61,12 +61,17 @@ class NotificationRepository(private val client: SupabaseClient) {
         val actorById = actors.associateBy { it.id }
         val tripById = trips.associateBy { it.id }
         val planById = plans.associateBy { it.id }
+        // A new day shows its own first photo rather than the trip's cover.
+        val dayCoverById = fetchDayCoverUrls(
+            client, rows.filter { it.type == NotificationType.NEW_DAY }.mapNotNull { it.dayId }.distinct()
+        )
 
         return rows.map { row ->
             row.copy(
                 actor = row.actorId?.let(actorById::get),
                 trip = row.tripId?.let(tripById::get),
-                plan = row.planId?.let(planById::get)
+                plan = row.planId?.let(planById::get),
+                dayCoverUrl = row.dayId?.let(dayCoverById::get)
             )
         }
     }
