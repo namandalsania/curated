@@ -55,6 +55,7 @@ import com.google.maps.android.compose.MarkerState
 import com.google.maps.android.compose.rememberCameraPositionState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.curated.app.navigation.ReportUnsavedChanges
 
 /** Search for a place or drop a pin, then add it to a particular day. */
 @Composable
@@ -73,6 +74,8 @@ fun AddPlaceScreen(
     var placeName by remember { mutableStateOf("") }
     var category by remember { mutableStateOf(StopCategory.OTHER) }
     var pin by remember { mutableStateOf<LatLng?>(null) }
+    // Nothing is saved until "Add to Day".
+    ReportUnsavedChanges(query.isNotBlank() || placeName.isNotBlank() || pin != null)
 
     // Search as you type, once the typing pauses.
     LaunchedEffect(query) {

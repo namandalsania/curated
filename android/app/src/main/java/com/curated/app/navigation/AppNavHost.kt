@@ -10,6 +10,7 @@ import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -18,10 +19,15 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -29,7 +35,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination.Companion.hierarchy
-import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.composable
@@ -72,6 +77,24 @@ fun AppNavHost(currentUserId: String) {
     val currentDestination = backStackEntry?.destination
     val topLevelRoutes = setOf(AppRoutes.HOME, AppRoutes.EXPLORE, CreateRoutes.GRAPH, AppRoutes.PROFILE_PATTERN)
     val showBottomBar = currentDestination?.hierarchy?.any { it.route in topLevelRoutes } == true
+    val unsavedChanges = remember { UnsavedChanges() }
+    // A tab tapped while the screen on show has unsaved input waits here for "Leave".
+    var pendingTab by remember { mutableStateOf<(() -> Unit)?>(null) }
+    fun leaveFor(go: () -> Unit) {
+        if (unsavedChanges.any) pendingTab = go else go()
+    }
+
+    pendingTab?.let { go ->
+        AlertDialog(
+            onDismissRequest = { pendingTab = null },
+            title = { Text("Leave without saving?") },
+            text = { Text("What you've entered on this screen will be lost.") },
+            confirmButton = {
+                TextButton(onClick = { pendingTab = null; go() }) { Text("Leave") }
+            },
+            dismissButton = { TextButton(onClick = { pendingTab = null }) { Text("Stay") } }
+        )
+    }
 
     // No window insets here: each screen's own Scaffold/TopAppBar already pads for
     // the status bar, so applying them again left a blank band above every title.
@@ -95,7 +118,7 @@ fun AppNavHost(currentUserId: String) {
                         onClick = {
                             // Already on Home: scroll it to the top instead.
                             if (currentDestination?.route == AppRoutes.HOME) HomeReselect.events.tryEmit(Unit)
-                            else navController.navigateToTab(AppRoutes.HOME)
+                            else leaveFor { navController.navigateToTab(AppRoutes.HOME) }
                         },
                         icon = { NavIconSlot { Icon(Icons.Outlined.Home, contentDescription = "Home") } },
                         label = { Text("Home") },
@@ -103,7 +126,7 @@ fun AppNavHost(currentUserId: String) {
                     )
                     NavigationBarItem(
                         selected = currentDestination.isInHierarchy(AppRoutes.EXPLORE),
-                        onClick = { navController.navigateToTab(AppRoutes.EXPLORE) },
+                        onClick = { leaveFor { navController.navigateToTab(AppRoutes.EXPLORE) } },
                         icon = { NavIconSlot { Icon(Icons.Outlined.Explore, contentDescription = "Explore") } },
                         label = { Text("Explore") },
                         colors = itemColors
@@ -112,7 +135,12 @@ fun AppNavHost(currentUserId: String) {
                         selected = currentDestination.isInHierarchy(CreateRoutes.GRAPH),
                         // A tab like the others: pushed onto whichever tab was open, it
                         // got saved with that tab and came back in place of its root.
-                        onClick = { navController.navigateToTab(CreateRoutes.GRAPH) },
+                        // Already in it: nothing to do (re-navigating rebuilt the screen).
+                        onClick = {
+                            if (!currentDestination.isInHierarchy(CreateRoutes.GRAPH)) {
+                                navController.navigateToTab(CreateRoutes.GRAPH)
+                            }
+                        },
                         icon = {
                             // The one FAB-style element in the bottom bar: raised
                             // above the flat chrome to signal "this is actionable."
@@ -138,7 +166,7 @@ fun AppNavHost(currentUserId: String) {
                     )
                     NavigationBarItem(
                         selected = currentDestination.isInHierarchy(AppRoutes.PROFILE_PATTERN),
-                        onClick = { navController.navigateToTab(AppRoutes.profile(currentUserId)) },
+                        onClick = { leaveFor { navController.navigateToTab(AppRoutes.profile(currentUserId)) } },
                         icon = { NavIconSlot { Icon(Icons.Outlined.AccountCircle, contentDescription = "Profile") } },
                         label = { Text("Profile") },
                         colors = itemColors
@@ -147,163 +175,157 @@ fun AppNavHost(currentUserId: String) {
             }
         }
     ) { padding ->
-        NavHost(
-            navController = navController,
-            startDestination = AppRoutes.HOME,
-            modifier = Modifier.padding(padding)
-        ) {
-            composable(AppRoutes.HOME) {
-                HomeFeedScreen(
-                    onTripClick = { tripId -> navController.navigate(AppRoutes.tripDetail(tripId)) },
-                    onAuthorClick = { authorId -> navController.navigate(AppRoutes.profile(authorId)) },
-                    onOpenPlans = { navController.navigate(AppRoutes.PLANS) { launchSingleTop = true } },
-                    onOpenActivity = { tab -> navController.navigate(AppRoutes.activity(tab)) { launchSingleTop = true } },
-                    onOpenSavedPlaces = { navController.navigate(AppRoutes.SAVED_PLACES) { launchSingleTop = true } },
-                    onLiveDayClick = { tripId, dayIndex -> navController.navigate(AppRoutes.tripDetailAtDay(tripId, dayIndex)) },
-                    onFindPeople = { navController.navigateToTab(AppRoutes.EXPLORE) }
-                )
-            }
-            composable(AppRoutes.EXPLORE) {
-                ExploreScreen(
-                    onTripClick = { tripId -> navController.navigate(AppRoutes.tripDetail(tripId)) },
-                    onAuthorClick = { authorId -> navController.navigate(AppRoutes.profile(authorId)) }
-                )
-            }
-            createNavGraph(navController)
-            composable(
-                route = AppRoutes.TRIP_DETAIL_PATTERN,
-                arguments = listOf(
-                    navArgument("tripId") { type = NavType.StringType },
-                    navArgument("day") { type = NavType.IntType; defaultValue = -1 },
-                    navArgument("dayId") { type = NavType.StringType; nullable = true; defaultValue = null }
-                )
-            ) { entry ->
-                val tripId = entry.arguments?.getString("tripId").orEmpty()
-                val initialDay = entry.arguments?.getInt("day")?.takeIf { it > 0 }
-                TripDetailScreen(
-                    tripId = tripId,
-                    onBack = { navController.popBackStack() },
-                    onAuthorClick = { authorId -> navController.navigate(AppRoutes.profile(authorId)) },
-                    onOpenSavedPlaces = { navController.navigate(AppRoutes.SAVED_PLACES) { launchSingleTop = true } },
-                    initialDay = initialDay,
-                    initialDayId = entry.arguments?.getString("dayId")
-                )
-            }
-            composable(
-                route = AppRoutes.PROFILE_PATTERN,
-                arguments = listOf(navArgument("userId") { type = NavType.StringType })
-            ) { entry ->
-                val userId = entry.arguments?.getString("userId").orEmpty()
-                val reloadKey by entry.savedStateHandle
-                    .getStateFlow(AppRoutes.PROFILE_RELOAD_KEY, 0L)
-                    .collectAsState()
-                ProfileScreen(
-                    userId = userId,
-                    reloadKey = reloadKey,
-                    onTripClick = { tripId -> navController.navigate(AppRoutes.tripDetail(tripId)) },
-                    onFollowersClick = { navController.navigate(AppRoutes.followList(userId, FollowListKind.FOLLOWERS)) },
-                    onFollowingClick = { navController.navigate(AppRoutes.followList(userId, FollowListKind.FOLLOWING)) },
-                    onEditProfile = { navController.navigate(AppRoutes.EDIT_PROFILE) },
-                    onOpenSavedPlaces = { navController.navigate(AppRoutes.SAVED_PLACES) { launchSingleTop = true } },
-                    onResumeDraft = { tripId -> navController.navigate(CreateRoutes.resumeDraft(tripId)) },
-                    onOpenLiveTrip = { tripId -> navController.navigate(CreateRoutes.live(tripId)) },
-                    onOpenPlans = { navController.navigate(AppRoutes.PLANS) { launchSingleTop = true } },
-                    onOpenSettings = { navController.navigate(AppRoutes.SETTINGS) { launchSingleTop = true } },
-                    onBack = { navController.popBackStack() }
-                )
-            }
-            composable(AppRoutes.BLOCKED_ACCOUNTS) {
-                BlockedAccountsScreen(onBack = { navController.popBackStack() })
-            }
-            composable(AppRoutes.SETTINGS) {
-                SettingsScreen(
-                    onBack = { navController.popBackStack() },
-                    onOpenBlockedAccounts = { navController.navigate(AppRoutes.BLOCKED_ACCOUNTS) { launchSingleTop = true } },
-                    onDeleteAccount = { navController.navigate(AppRoutes.DELETE_ACCOUNT) { launchSingleTop = true } }
-                )
-            }
-            composable(AppRoutes.DELETE_ACCOUNT) {
-                DeleteAccountScreen(onBack = { navController.popBackStack() })
-            }
-            composable(
-                route = AppRoutes.ACTIVITY_PATTERN,
-                arguments = listOf(navArgument("tab") { type = NavType.StringType })
-            ) { entry ->
-                val tab = entry.arguments?.getString("tab")
-                    ?.let { name -> ActivityTab.entries.firstOrNull { it.name == name } }
-                    ?: ActivityTab.ACTIVITY
-                ActivityScreen(
-                    initialTab = tab,
-                    onBack = { navController.popBackStack() },
-                    onOpenTrip = { tripId, dayId ->
-                        navController.navigate(
-                            if (dayId != null) AppRoutes.tripDetailAtDayId(tripId, dayId) else AppRoutes.tripDetail(tripId)
-                        )
-                    },
-                    onOpenProfile = { userId -> navController.navigate(AppRoutes.profile(userId)) },
-                    onOpenPlans = { navController.navigate(AppRoutes.PLANS) { launchSingleTop = true } }
-                )
-            }
-            composable(AppRoutes.SAVED_PLACES) {
-                SavedPlacesScreen(
-                    onBack = { navController.popBackStack() },
-                    onOpenTrip = { tripId -> navController.navigate(AppRoutes.tripDetail(tripId)) },
-                    onOpenPlans = { navController.navigate(AppRoutes.PLANS) { launchSingleTop = true } }
-                )
-            }
-            composable(AppRoutes.PLANS) {
-                PlansScreen(
-                    onBack = { navController.popBackStack() },
-                    onOpenPlan = { planId -> navController.navigate(AppRoutes.planEditor(planId)) }
-                )
-            }
-            composable(
-                route = AppRoutes.PLAN_EDITOR_PATTERN,
-                arguments = listOf(navArgument("planId") { type = NavType.StringType })
-            ) { entry ->
-                PlanEditorScreen(
-                    planId = entry.arguments?.getString("planId").orEmpty(),
-                    onBack = { navController.popBackStack() },
-                    onOpenSavedPlaces = { navController.navigate(AppRoutes.SAVED_PLACES) { launchSingleTop = true } }
-                )
-            }
-            composable(AppRoutes.EDIT_PROFILE) {
-                EditProfileScreen(
-                    onBack = { navController.popBackStack() },
-                    onSaved = {
-                        navController.previousBackStackEntry?.savedStateHandle
-                            ?.set(AppRoutes.PROFILE_RELOAD_KEY, System.currentTimeMillis())
-                        navController.popBackStack()
-                    }
-                )
-            }
-            composable(
-                route = AppRoutes.FOLLOW_LIST_PATTERN,
-                arguments = listOf(
-                    navArgument("userId") { type = NavType.StringType },
-                    navArgument("kind") { type = NavType.StringType }
-                )
-            ) { entry ->
-                val userId = entry.arguments?.getString("userId").orEmpty()
-                val kind = entry.arguments?.getString("kind")
-                    ?.let { runCatching { FollowListKind.valueOf(it) }.getOrNull() }
-                    ?: FollowListKind.FOLLOWERS
-                FollowListScreen(
-                    userId = userId,
-                    kind = kind,
-                    onBack = { navController.popBackStack() },
-                    onUserClick = { id -> navController.navigate(AppRoutes.profile(id)) }
-                )
+        CompositionLocalProvider(LocalUnsavedChanges provides unsavedChanges) {
+            NavHost(
+                navController = navController,
+                startDestination = AppRoutes.HOME,
+                modifier = Modifier.padding(padding)
+            ) {
+                composable(AppRoutes.HOME) {
+                    HomeFeedScreen(
+                        onTripClick = { tripId -> navController.navigate(AppRoutes.tripDetail(tripId)) },
+                        onAuthorClick = { authorId -> navController.navigate(AppRoutes.profile(authorId)) },
+                        onOpenPlans = { navController.navigate(AppRoutes.PLANS) { launchSingleTop = true } },
+                        onOpenActivity = { tab -> navController.navigate(AppRoutes.activity(tab)) { launchSingleTop = true } },
+                        onOpenSavedPlaces = { navController.navigate(AppRoutes.SAVED_PLACES) { launchSingleTop = true } },
+                        onLiveDayClick = { tripId, dayIndex -> navController.navigate(AppRoutes.tripDetailAtDay(tripId, dayIndex)) },
+                        onFindPeople = { navController.navigateToTab(AppRoutes.EXPLORE) }
+                    )
+                }
+                composable(AppRoutes.EXPLORE) {
+                    ExploreScreen(
+                        onTripClick = { tripId -> navController.navigate(AppRoutes.tripDetail(tripId)) },
+                        onAuthorClick = { authorId -> navController.navigate(AppRoutes.profile(authorId)) }
+                    )
+                }
+                createNavGraph(navController)
+                composable(
+                    route = AppRoutes.TRIP_DETAIL_PATTERN,
+                    arguments = listOf(
+                        navArgument("tripId") { type = NavType.StringType },
+                        navArgument("day") { type = NavType.IntType; defaultValue = -1 },
+                        navArgument("dayId") { type = NavType.StringType; nullable = true; defaultValue = null }
+                    )
+                ) { entry ->
+                    val tripId = entry.arguments?.getString("tripId").orEmpty()
+                    val initialDay = entry.arguments?.getInt("day")?.takeIf { it > 0 }
+                    TripDetailScreen(
+                        tripId = tripId,
+                        onBack = { navController.popBackStack() },
+                        onAuthorClick = { authorId -> navController.navigate(AppRoutes.profile(authorId)) },
+                        onOpenSavedPlaces = { navController.navigate(AppRoutes.SAVED_PLACES) { launchSingleTop = true } },
+                        initialDay = initialDay,
+                        initialDayId = entry.arguments?.getString("dayId")
+                    )
+                }
+                composable(
+                    route = AppRoutes.PROFILE_PATTERN,
+                    arguments = listOf(navArgument("userId") { type = NavType.StringType })
+                ) { entry ->
+                    val userId = entry.arguments?.getString("userId").orEmpty()
+                    val reloadKey by entry.savedStateHandle
+                        .getStateFlow(AppRoutes.PROFILE_RELOAD_KEY, 0L)
+                        .collectAsState()
+                    ProfileScreen(
+                        userId = userId,
+                        reloadKey = reloadKey,
+                        onTripClick = { tripId -> navController.navigate(AppRoutes.tripDetail(tripId)) },
+                        onFollowersClick = { navController.navigate(AppRoutes.followList(userId, FollowListKind.FOLLOWERS)) },
+                        onFollowingClick = { navController.navigate(AppRoutes.followList(userId, FollowListKind.FOLLOWING)) },
+                        onEditProfile = { navController.navigate(AppRoutes.EDIT_PROFILE) },
+                        onOpenSavedPlaces = { navController.navigate(AppRoutes.SAVED_PLACES) { launchSingleTop = true } },
+                        onResumeDraft = { tripId -> navController.openInCreateTab(CreateRoutes.resumeDraft(tripId)) },
+                        onOpenLiveTrip = { tripId -> navController.openInCreateTab(CreateRoutes.live(tripId)) },
+                        onOpenPlans = { navController.navigate(AppRoutes.PLANS) { launchSingleTop = true } },
+                        onOpenSettings = { navController.navigate(AppRoutes.SETTINGS) { launchSingleTop = true } },
+                        onBack = { navController.popBackStack() }
+                    )
+                }
+                composable(AppRoutes.BLOCKED_ACCOUNTS) {
+                    BlockedAccountsScreen(onBack = { navController.popBackStack() })
+                }
+                composable(AppRoutes.SETTINGS) {
+                    SettingsScreen(
+                        onBack = { navController.popBackStack() },
+                        onOpenBlockedAccounts = { navController.navigate(AppRoutes.BLOCKED_ACCOUNTS) { launchSingleTop = true } },
+                        onDeleteAccount = { navController.navigate(AppRoutes.DELETE_ACCOUNT) { launchSingleTop = true } }
+                    )
+                }
+                composable(AppRoutes.DELETE_ACCOUNT) {
+                    DeleteAccountScreen(onBack = { navController.popBackStack() })
+                }
+                composable(
+                    route = AppRoutes.ACTIVITY_PATTERN,
+                    arguments = listOf(navArgument("tab") { type = NavType.StringType })
+                ) { entry ->
+                    val tab = entry.arguments?.getString("tab")
+                        ?.let { name -> ActivityTab.entries.firstOrNull { it.name == name } }
+                        ?: ActivityTab.ACTIVITY
+                    ActivityScreen(
+                        initialTab = tab,
+                        onBack = { navController.popBackStack() },
+                        onOpenTrip = { tripId, dayId ->
+                            navController.navigate(
+                                if (dayId != null) AppRoutes.tripDetailAtDayId(tripId, dayId) else AppRoutes.tripDetail(tripId)
+                            )
+                        },
+                        onOpenProfile = { userId -> navController.navigate(AppRoutes.profile(userId)) },
+                        onOpenPlans = { navController.navigate(AppRoutes.PLANS) { launchSingleTop = true } }
+                    )
+                }
+                composable(AppRoutes.SAVED_PLACES) {
+                    SavedPlacesScreen(
+                        onBack = { navController.popBackStack() },
+                        onOpenTrip = { tripId -> navController.navigate(AppRoutes.tripDetail(tripId)) },
+                        onOpenPlans = { navController.navigate(AppRoutes.PLANS) { launchSingleTop = true } }
+                    )
+                }
+                composable(AppRoutes.PLANS) {
+                    PlansScreen(
+                        onBack = { navController.popBackStack() },
+                        onOpenPlan = { planId -> navController.navigate(AppRoutes.planEditor(planId)) }
+                    )
+                }
+                composable(
+                    route = AppRoutes.PLAN_EDITOR_PATTERN,
+                    arguments = listOf(navArgument("planId") { type = NavType.StringType })
+                ) { entry ->
+                    PlanEditorScreen(
+                        planId = entry.arguments?.getString("planId").orEmpty(),
+                        onBack = { navController.popBackStack() },
+                        onOpenSavedPlaces = { navController.navigate(AppRoutes.SAVED_PLACES) { launchSingleTop = true } }
+                    )
+                }
+                composable(AppRoutes.EDIT_PROFILE) {
+                    EditProfileScreen(
+                        onBack = { navController.popBackStack() },
+                        onSaved = {
+                            navController.previousBackStackEntry?.savedStateHandle
+                                ?.set(AppRoutes.PROFILE_RELOAD_KEY, System.currentTimeMillis())
+                            navController.popBackStack()
+                        }
+                    )
+                }
+                composable(
+                    route = AppRoutes.FOLLOW_LIST_PATTERN,
+                    arguments = listOf(
+                        navArgument("userId") { type = NavType.StringType },
+                        navArgument("kind") { type = NavType.StringType }
+                    )
+                ) { entry ->
+                    val userId = entry.arguments?.getString("userId").orEmpty()
+                    val kind = entry.arguments?.getString("kind")
+                        ?.let { runCatching { FollowListKind.valueOf(it) }.getOrNull() }
+                        ?: FollowListKind.FOLLOWERS
+                    FollowListScreen(
+                        userId = userId,
+                        kind = kind,
+                        onBack = { navController.popBackStack() },
+                        onUserClick = { id -> navController.navigate(AppRoutes.profile(id)) }
+                    )
+                }
             }
         }
-    }
-}
-
-private fun androidx.navigation.NavController.navigateToTab(route: String) {
-    navigate(route) {
-        popUpTo(graph.findStartDestination().id) { saveState = true }
-        launchSingleTop = true
-        restoreState = true
     }
 }
 

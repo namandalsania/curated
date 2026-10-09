@@ -43,6 +43,7 @@ import com.curated.app.designsystem.Spacing
 import com.curated.app.designsystem.components.HairlineDivider
 import com.curated.app.designsystem.components.PrimaryButton
 import kotlinx.coroutines.delay
+import com.curated.app.navigation.ReportUnsavedChanges
 
 /**
  * "I'm traveling now": one question, then straight into posting Day 1. The
@@ -61,6 +62,7 @@ fun LiveStartScreen(
     // A picked suggestion fills the field; searching for it again would just repeat it.
     var picked by remember { mutableStateOf<String?>(null) }
     var suggestions by remember { mutableStateOf<List<PlaceSuggestion>>(emptyList()) }
+    ReportUnsavedChanges(destination.isNotBlank())
 
     LaunchedEffect(destination) {
         if (destination.isBlank() || destination == picked) {

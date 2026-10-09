@@ -51,6 +51,7 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
 import kotlinx.datetime.toLocalDateTime
+import com.curated.app.navigation.ReportUnsavedChanges
 
 /**
  * "I already took this trip", after the photo picker: everything the photos
@@ -84,6 +85,13 @@ fun ImportReviewScreen(
             titleEdited = false
         }
     }
+    // What the photos said comes back on return; only changes to it would be lost.
+    ReportUnsavedChanges(
+        review != null && (
+            destination != review.destination || startDate != review.startDate ||
+                endDate != review.endDate || titleEdited || visibility != TripVisibility.PUBLIC
+            )
+    )
     LaunchedEffect(destination, startDate, endDate, titleEdited) {
         if (!titleEdited) title = TripSuggestions.title(destination, startDate, endDate)
     }
