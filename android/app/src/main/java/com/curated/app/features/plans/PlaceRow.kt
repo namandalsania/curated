@@ -9,12 +9,24 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.DirectionsTransit
+import androidx.compose.material.icons.outlined.Hotel
+import androidx.compose.material.icons.outlined.Landscape
+import androidx.compose.material.icons.outlined.Place
+import androidx.compose.material.icons.outlined.Restaurant
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -62,13 +74,26 @@ fun PlaceRow(
             modifier = Modifier
                 .size(56.dp)
                 .clip(RoundedCornerShape(CuratedCornerRadius))
-                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+            contentAlignment = Alignment.Center
         ) {
+            // Shown until a photo loads, so a copy with none (its trip was
+            // deleted) or one that won't load gets the category, not an empty square.
+            var photoLoaded by remember(place.photoUrl) { mutableStateOf(false) }
+            if (!photoLoaded) {
+                Icon(
+                    place.category.placeholderIcon(),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
             place.photoUrl?.let {
                 AsyncImage(
                     model = it,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
+                    onSuccess = { photoLoaded = true },
                     modifier = Modifier.fillMaxSize()
                 )
             }
@@ -109,6 +134,14 @@ fun PlaceRow(
         }
         trailing()
     }
+}
+
+private fun StopCategory.placeholderIcon(): ImageVector = when (this) {
+    StopCategory.FOOD -> Icons.Outlined.Restaurant
+    StopCategory.SIGHT -> Icons.Outlined.Landscape
+    StopCategory.HOTEL -> Icons.Outlined.Hotel
+    StopCategory.TRANSPORT -> Icons.Outlined.DirectionsTransit
+    StopCategory.OTHER -> Icons.Outlined.Place
 }
 
 /** "from Maya's Naples in 3 days" - credit to the creator the place came from. */
