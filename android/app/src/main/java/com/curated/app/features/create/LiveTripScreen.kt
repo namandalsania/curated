@@ -69,7 +69,9 @@ import com.curated.app.designsystem.components.HairlineDivider
 import com.curated.app.designsystem.components.PrimaryButton
 import com.curated.app.designsystem.components.Tag
 import com.curated.app.designsystem.components.TagStyle
+import com.curated.app.features.trip.DeleteTripDialog
 import com.curated.app.features.trip.StopPreviewRow
+import com.curated.app.features.trip.TripOwnerMenu
 import com.curated.app.features.trip.TripVisibilityPicker
 import com.curated.app.features.trip.stopPreview
 import kotlin.time.Clock
@@ -86,13 +88,15 @@ fun LiveTripScreen(
     viewModel: CreateTripViewModel,
     onBack: () -> Unit,
     onOpenDay: (Int) -> Unit,
-    onEnded: (String) -> Unit
+    onEnded: (String) -> Unit,
+    onDeleted: () -> Unit
 ) {
     val context = LocalContext.current
     val state by viewModel.state.collectAsState()
     var editing by remember { mutableStateOf<StopWithPhotos?>(null) }
     var showEndSheet by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
     // The day whose card asked for photos or a post, so its result shows on that card.
     var actedOnDay by rememberSaveable { mutableStateOf<Int?>(null) }
 
@@ -166,11 +170,29 @@ fun LiveTripScreen(
         )
     }
 
+    if (confirmDelete) {
+        DeleteTripDialog(
+            isDeleting = state.isDeleting,
+            onConfirm = {
+                viewModel.deleteTrip(onDone = {
+                    confirmDelete = false
+                    onDeleted()
+                })
+            },
+            onDismiss = { confirmDelete = false }
+        )
+    }
+    // A failed delete leaves the trip as it was; the dialog closes so its error shows.
+    LaunchedEffect(state.isDeleting, state.error) {
+        if (confirmDelete && !state.isDeleting && state.error != null) confirmDelete = false
+    }
+
     LiveTripContent(
         state = state,
         actedOnDay = actedOnDay,
         onBack = onBack,
         onOpenSettings = { showSettings = true },
+        onDeleteTrip = { confirmDelete = true },
         onOpenDay = onOpenDay,
         onPostDay = { day ->
             actedOnDay = day
@@ -194,6 +216,7 @@ private fun LiveTripContent(
     actedOnDay: Int?,
     onBack: () -> Unit,
     onOpenSettings: () -> Unit,
+    onDeleteTrip: () -> Unit,
     onOpenDay: (Int) -> Unit,
     onPostDay: (Int) -> Unit,
     onAddPhotos: (Int) -> Unit,
@@ -224,6 +247,7 @@ private fun LiveTripContent(
                     IconButton(onClick = onOpenSettings) {
                         Icon(Icons.Outlined.Settings, contentDescription = "Trip settings")
                     }
+                    TripOwnerMenu(onDeleteTrip = onDeleteTrip, enabled = !state.isDeleting)
                     Tag("LIVE", style = TagStyle.Accent, modifier = Modifier.padding(end = Spacing.md))
                 }
             )

@@ -214,6 +214,12 @@ fun AppNavHost(currentUserId: String) {
                         onBack = { navController.popBackStack() },
                         onAuthorClick = { authorId -> navController.navigate(AppRoutes.profile(authorId)) },
                         onOpenSavedPlaces = { navController.navigate(AppRoutes.SAVED_PLACES) { launchSingleTop = true } },
+                        onDeleted = {
+                            // If it was opened from a profile, that grid still shows the trip.
+                            navController.previousBackStackEntry?.savedStateHandle
+                                ?.set(AppRoutes.PROFILE_RELOAD_KEY, System.currentTimeMillis())
+                            navController.popBackStack()
+                        },
                         initialDay = initialDay,
                         initialDayId = entry.arguments?.getString("dayId")
                     )

@@ -10,6 +10,12 @@
             android:exported="true"
             android:screenOrientation="portrait"
             android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+        <!-- The owner's trip-page menu and Delete trip confirmation, no network. -->
+        <activity
+            android:name=".debug.DeleteTripPreviewActivity"
+            android:exported="true"
+            android:screenOrientation="portrait"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
     </application>
 
 </manifest>

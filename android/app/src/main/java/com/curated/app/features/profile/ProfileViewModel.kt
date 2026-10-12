@@ -9,6 +9,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.curated.app.core.data.AuthRepository
 import com.curated.app.core.data.BlockedAccounts
 import com.curated.app.core.data.EngagementRepository
+import com.curated.app.core.data.PhotoStorageRepository
 import com.curated.app.core.data.SocialRepository
 import com.curated.app.core.data.SupabaseProvider
 import com.curated.app.core.data.TripRepository
@@ -50,6 +51,7 @@ class ProfileViewModel(
     private val authRepository: AuthRepository,
     private val socialRepository: SocialRepository,
     private val tripRepository: TripRepository,
+    private val photoStorageRepository: PhotoStorageRepository,
     private val engagementRepository: EngagementRepository,
     private val geocodingService: GeocodingService
 ) : ViewModel() {
@@ -159,13 +161,23 @@ class ProfileViewModel(
         }
     }
 
+    /**
+     * Gone from the list straight away. If deleting its photos or row fails the
+     * draft is still there, so it comes back, in its place, to try again.
+     */
     fun deleteDraft(tripId: String) {
-        _state.update { state -> state.copy(drafts = state.drafts.filterNot { it.id == tripId }) }
+        val before = _state.value.drafts
+        val draft = before.firstOrNull { it.id == tripId } ?: return
+        _state.update { state -> state.copy(drafts = state.drafts.filterNot { it.id == tripId }, actionError = null) }
         viewModelScope.launch {
-            runCatching { tripRepository.deleteTrip(tripId) }
+            runCatching { tripRepository.deleteTrip(tripId, photoStorageRepository) }
                 .onFailure {
                     Log.w(TAG, "Couldn't delete draft $tripId", it)
-                    _state.update { it.copy(actionError = "Couldn't delete that draft.") }
+                    _state.update { state ->
+                        val restored = if (state.drafts.any { d -> d.id == tripId }) state.drafts
+                        else (state.drafts + draft).sortedBy { d -> before.indexOfFirst { it.id == d.id } }
+                        state.copy(drafts = restored, actionError = "Couldn't delete that draft. Try again.")
+                    }
                 }
         }
     }
@@ -189,6 +201,7 @@ class ProfileViewModel(
                     authRepository = AuthRepository(client),
                     socialRepository = SocialRepository(client),
                     tripRepository = TripRepository(client),
+                    photoStorageRepository = PhotoStorageRepository(client, appContext),
                     engagementRepository = EngagementRepository(client),
                     geocodingService = GeocodingService(appContext)
                 )

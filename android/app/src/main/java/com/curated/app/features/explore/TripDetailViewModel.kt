@@ -8,6 +8,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.curated.app.core.data.AuthRepository
 import com.curated.app.core.data.CommentRepository
+import com.curated.app.core.data.PhotoStorageRepository
 import com.curated.app.core.data.SavedPlacesRepository
 import com.curated.app.core.data.StopWithPhotos
 import com.curated.app.core.data.SupabaseProvider
@@ -33,13 +34,18 @@ data class TripDetailUiState(
     /** Comments per stop id, for the count on each place card. */
     val commentCounts: Map<String, Int> = emptyMap(),
     /** One-shot snackbar text; cleared by [TripDetailViewModel.snackbarShown]. */
-    val snackbar: TripDetailSnackbar? = null
+    val snackbar: TripDetailSnackbar? = null,
+    /** Owner's Delete trip is in flight. */
+    val isDeleting: Boolean = false,
+    /** The trip and its photos are gone; the screen closes on it. */
+    val deleted: Boolean = false
 )
 
 data class TripDetailSnackbar(val text: String, val offerViewSaved: Boolean = false)
 
 class TripDetailViewModel(
     private val tripRepository: TripRepository,
+    private val photoStorageRepository: PhotoStorageRepository,
     private val authRepository: AuthRepository,
     private val savedPlacesRepository: SavedPlacesRepository,
     private val commentRepository: CommentRepository,
@@ -144,6 +150,27 @@ class TripDetailViewModel(
         }
     }
 
+    /**
+     * Owner only, any status - live trips included. Photos, then the row (see
+     * TripRepository.deleteTrip); on failure the trip is untouched and stays open.
+     */
+    fun deleteTrip() {
+        val trip = _state.value.trip ?: return
+        if (!_state.value.isOwner || _state.value.isDeleting) return
+        _state.update { it.copy(isDeleting = true) }
+        viewModelScope.launch {
+            try {
+                tripRepository.deleteTrip(trip.id, photoStorageRepository)
+                _state.update { it.copy(isDeleting = false, deleted = true) }
+            } catch (e: Exception) {
+                Log.w(TAG, "Couldn't delete trip ${trip.id}", e)
+                _state.update {
+                    it.copy(isDeleting = false, snackbar = TripDetailSnackbar("Couldn't delete this trip. Check your connection and try again."))
+                }
+            }
+        }
+    }
+
     fun snackbarShown() = _state.update { it.copy(snackbar = null) }
 
     companion object {
@@ -155,6 +182,7 @@ class TripDetailViewModel(
                 val client = SupabaseProvider.client(appContext)
                 TripDetailViewModel(
                     tripRepository = TripRepository(client),
+                    photoStorageRepository = PhotoStorageRepository(client, appContext),
                     authRepository = AuthRepository(client),
                     savedPlacesRepository = SavedPlacesRepository(client),
                     commentRepository = CommentRepository(client),

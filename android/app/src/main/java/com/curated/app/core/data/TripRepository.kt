@@ -491,9 +491,17 @@ class TripRepository(private val client: SupabaseClient) {
             }
             .decodeList()
 
-    suspend fun deleteTrip(tripId: String) {
-        postgrest.from("trips").delete { filter { eq("id", tripId) } }
-    }
+    /**
+     * Deletes the trip's photos from Storage, then the trip row; the database
+     * removes the rest (see [deleteTripPhotosThenRow]). Throws if either step
+     * fails.
+     */
+    suspend fun deleteTrip(tripId: String, photoStorage: PhotoStorageRepository) =
+        deleteTripPhotosThenRow(
+            tripId = tripId,
+            deletePhotos = { photoStorage.deleteTripPhotos(it) },
+            deleteRow = { id -> postgrest.from("trips").delete { filter { eq("id", id) } } }
+        )
 
     /** The day row for [dayIndex], created on demand. */
     suspend fun ensureDay(tripId: String, dayIndex: Int): String {
@@ -901,3 +909,24 @@ internal data class DayStopPhotoRow(
     @SerialName("storage_path") val storagePath: String,
     @SerialName("order_index") val orderIndex: Int
 )
+
+/**
+ * Photos first, then the row. If the photos can't all be deleted, the row stays
+ * and the error goes to the caller, so the trip is still there to retry. The
+ * other order would strand the photos: with the row gone the app has no way
+ * back to them (that's how orphaned folders got into the bucket). If the row
+ * delete fails after the photos are gone, a retry finds an empty folder and
+ * goes straight to the row.
+ *
+ * The row's delete cascades to days, stops, stop_photos, likes, bookmarks,
+ * comments, trip shares and notifications. Saved places and plan items keep
+ * their copy of the place with the trip link set to null.
+ */
+internal suspend fun deleteTripPhotosThenRow(
+    tripId: String,
+    deletePhotos: suspend (String) -> Unit,
+    deleteRow: suspend (String) -> Unit
+) {
+    deletePhotos(tripId)
+    deleteRow(tripId)
+}

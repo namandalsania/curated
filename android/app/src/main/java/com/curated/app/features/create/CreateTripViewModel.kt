@@ -72,7 +72,9 @@ data class CreateWizardState(
     /** Why the last Post Day was refused, shown inline on that screen. */
     val postProblem: LiveTripRules.PostProblem? = null,
     val isEnding: Boolean = false,
-    val endedTrip: Trip? = null
+    val endedTrip: Trip? = null,
+    /** Deleting the trip (discard, or Delete trip on a live one) is in flight. */
+    val isDeleting: Boolean = false
 ) {
     val dayCount: Int
         get() {
@@ -637,11 +639,26 @@ class CreateTripViewModel(
         }
     }
 
-    /** Throws the draft away, rows and all. */
-    fun discardDraft(onDone: () -> Unit) {
+    /**
+     * Deletes the trip being edited - a draft being discarded, or a live trip -
+     * photos and rows. If that fails nothing is left half-done: the trip stays,
+     * the screen stays, and the error says to try again.
+     */
+    fun deleteTrip(onDone: () -> Unit) {
         val tripId = _state.value.tripId
+        if (_state.value.isDeleting) return
         viewModelScope.launch {
-            if (tripId != null) runCatching { tripRepository.deleteTrip(tripId) }
+            if (tripId != null) {
+                _state.update { it.copy(isDeleting = true, error = null) }
+                try {
+                    // After any upload in flight, so its photo isn't left behind in the folder.
+                    writeLock.withLock { tripRepository.deleteTrip(tripId, photoStorageRepository) }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Couldn't delete trip $tripId", e)
+                    _state.update { it.copy(isDeleting = false, error = "Couldn't delete this trip. Check your connection and try again.") }
+                    return@launch
+                }
+            }
             _state.update { CreateWizardState() }
             onDone()
         }

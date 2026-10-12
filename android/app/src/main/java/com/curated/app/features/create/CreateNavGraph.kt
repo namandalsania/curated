@@ -77,7 +77,9 @@ fun NavGraphBuilder.createNavGraph(navController: NavController) {
                     navController.navigate(AppRoutes.tripDetail(endedId)) {
                         popUpTo(CreateRoutes.GRAPH) { inclusive = true }
                     }
-                }
+                },
+                // Back where it was opened from, like discarding a draft.
+                onDeleted = { navController.popBackStack() }
             )
         }
         composable(

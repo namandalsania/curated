@@ -86,6 +86,8 @@ import com.curated.app.features.moderation.ModerationDialogs
 import com.curated.app.features.moderation.ModerationMenu
 import com.curated.app.features.moderation.ModerationSubject
 import com.curated.app.features.moderation.rememberModerationViewModel
+import com.curated.app.features.trip.DeleteTripDialog
+import com.curated.app.features.trip.TripOwnerMenu
 import com.curated.app.features.trip.TripVisibilityPicker
 import com.curated.app.features.trip.explanation
 import com.curated.app.features.trip.label
@@ -97,6 +99,8 @@ fun TripDetailScreen(
     onBack: () -> Unit,
     onAuthorClick: (String) -> Unit,
     onOpenSavedPlaces: () -> Unit,
+    /** The owner deleted this trip; there's nothing left to show. */
+    onDeleted: () -> Unit,
     /** Open scrolled to this day (its number), e.g. from a live day in the feed. */
     initialDay: Int? = null,
     /** Or by its `days` row, e.g. from a new-day notification. */
@@ -119,6 +123,17 @@ fun TripDetailScreen(
     }
     var showShare by remember { mutableStateOf(false) }
     var showVisibility by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
+    LaunchedEffect(state.deleted) { if (state.deleted) onDeleted() }
+    // A failed delete closes the dialog; the snackbar says what happened.
+    LaunchedEffect(state.isDeleting) { if (!state.isDeleting && !state.deleted) confirmDelete = false }
+    if (confirmDelete && state.isOwner) {
+        DeleteTripDialog(
+            isDeleting = state.isDeleting,
+            onConfirm = viewModel::deleteTrip,
+            onDismiss = { confirmDelete = false }
+        )
+    }
     val moderation = rememberModerationViewModel(key = "trip-$tripId")
     val moderationState by moderation.state.collectAsState()
     // Blocking the author hides this trip from you, so there's nothing left to show.
@@ -210,6 +225,9 @@ fun TripDetailScreen(
                         }
                     }
                     val shown = state.trip
+                    if (shown != null && state.isOwner) {
+                        TripOwnerMenu(onDeleteTrip = { confirmDelete = true }, enabled = !state.isDeleting)
+                    }
                     if (shown != null && !state.isOwner) {
                         ModerationMenu(
                             subject = ModerationSubject(

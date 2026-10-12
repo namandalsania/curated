@@ -135,7 +135,7 @@ fun ItineraryBuilderScreen(
             confirmButton = {
                 TextButton(onClick = {
                     confirmDiscard = false
-                    viewModel.discardDraft(onBack)
+                    viewModel.deleteTrip(onBack)
                 }) { Text("Discard") }
             },
             dismissButton = { TextButton(onClick = { confirmDiscard = false }) { Text("Keep") } },
