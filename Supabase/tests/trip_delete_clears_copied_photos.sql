@@ -5,6 +5,8 @@
 --
 -- A failure raises an exception, which aborts the script. Silence past the last
 -- NOTICE means a case failed - read the error, not the absence of output.
+-- The last result is one row, "4 of 4 cases passed", for editors that show
+-- the result grid but not notices; it only appears if every case passed.
 --
 -- The cases fail if the trigger is missing, runs AFTER DELETE (the copies'
 -- source_trip_id is already null by then), or isn't SECURITY DEFINER (the
@@ -107,6 +109,9 @@ insert into public.plan_items (id, plan_id, day_number, position, stop_id, sourc
    'Doomed Stop', 'sight', 41.9028, 12.4964, 'https://example.invalid/stop-photos/3b4/3d4/0.jpg',
    '00000000-0000-0000-0000-0000000003a4');
 
+-- Each case adds its number here once it has passed; the summary counts them.
+create temp table cases_passed (n int primary key);
+
 -- Fingerprint of the copies of the kept trip, compared after every case.
 create temp table kept_copies_before as
 select 'saved_places' t, md5(string_agg(x::text, '|' order by x.id)) h
@@ -172,6 +177,7 @@ begin
      or (select photo_url from public.plan_items where id = '00000000-0000-0000-0000-000000000394') is null then
     raise exception 'FAIL case 1: a copy of a different trip lost its photo';
   end if;
+  insert into pg_temp.cases_passed values (1);
   raise notice 'PASS 1: deleting a trip as its author clears the photo on every copy of it (others'' saves and plans, and the author''s own), and nothing else';
 end $$;
 
@@ -209,6 +215,7 @@ begin
     union all select 1 from public.plan_items where plan_id = '00000000-0000-0000-0000-0000000003e4'
   ) x;
   if n <> 0 then raise exception 'FAIL case 2: % of the deleted account''s own saves/plans/items are left', n; end if;
+  insert into pg_temp.cases_passed values (2);
   raise notice 'PASS 2: account deletion still cascades - its trip goes, other people''s copies lose photo, title and name, its own saves and plan go';
 end $$;
 
@@ -221,6 +228,7 @@ begin
   delete from public.trips where id = '00000000-0000-0000-0000-0000000003b5';
   get diagnostics n = row_count;
   if n <> 1 then raise exception 'FAIL case 3: expected to delete 1 trip, deleted %', n; end if;
+  insert into pg_temp.cases_passed values (3);
   raise notice 'PASS 3: a trip with no copies deletes cleanly';
 end $$;
 
@@ -243,7 +251,20 @@ begin
   if changed is not null then
     raise exception 'FAIL case 4: copies of a trip that wasn''t deleted changed in: %', changed;
   end if;
+  insert into pg_temp.cases_passed values (4);
   raise notice 'PASS 4: copies of trips that weren''t deleted are unchanged (saves and plan items)';
 end $$;
+
+-- ---------------------------------------------------------------------------
+-- Summary: an error unless all four cases recorded a pass, then one row.
+-- ---------------------------------------------------------------------------
+do $$
+declare n int;
+begin
+  select count(*) into n from pg_temp.cases_passed;
+  if n <> 4 then raise exception 'FAIL summary: only % of 4 cases passed', n; end if;
+end $$;
+
+select format('%s of 4 cases passed', count(*)) as result from pg_temp.cases_passed;
 
 rollback;
