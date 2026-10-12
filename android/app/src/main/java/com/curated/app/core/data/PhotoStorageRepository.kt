@@ -37,6 +37,10 @@ class PhotoStorageRepository(
      */
     suspend fun deleteTripPhotos(tripId: String): Int = TripPhotoCleaner(SupabasePhotoFolderStore(bucket)).deleteTripFolder(tripId)
 
+    /** The same for one stop's folder (`<tripId>/<stopId>/`). */
+    suspend fun deleteStopPhotos(tripId: String, stopId: String): Int =
+        TripPhotoCleaner(SupabasePhotoFolderStore(bucket)).deleteStopFolder(tripId, stopId)
+
     fun publicUrl(storagePath: String): String = resolvePhotoUrl(client, storagePath)
 }
 
@@ -62,9 +66,11 @@ private class SupabasePhotoFolderStore(private val bucket: BucketApi) : PhotoFol
 }
 
 /**
- * Empties a trip's photo folder. Photos live at `<tripId>/<stopId>/<n>.jpg`,
- * so it walks every subfolder, page by page, collects every path first (deleting
- * while paging would shift the offsets), deletes in batches, then lists again.
+ * Empties a trip's photo folder, or one stop's inside it. Photos live at
+ * `<tripId>/<stopId>/<n>.jpg` and never move between stops, so a stop's folder
+ * holds exactly its photos. It walks every subfolder, page by page, collects
+ * every path first (deleting while paging would shift the offsets), deletes in
+ * batches, then lists again.
  *
  * Storage only lists and deletes the caller's own files; a file it can't see
  * can't be deleted from the app. The account-deletion function, which runs with
@@ -75,13 +81,22 @@ class TripPhotoCleaner(
     private val pageSize: Int = 100,
     private val deleteBatch: Int = 100
 ) {
-    suspend fun deleteTripFolder(tripId: String): Int {
-        // A blank or nested id would list far more than this trip's folder.
-        require(tripId.isNotBlank() && '/' !in tripId) { "Not a trip id: '$tripId'" }
-        val paths = filesUnder(tripId)
+    suspend fun deleteTripFolder(tripId: String): Int = deleteFolder(folderId(tripId))
+
+    suspend fun deleteStopFolder(tripId: String, stopId: String): Int =
+        deleteFolder("${folderId(tripId)}/${folderId(stopId)}")
+
+    // A blank or nested id would list far more than the one folder meant.
+    private fun folderId(id: String): String {
+        require(id.isNotBlank() && '/' !in id) { "Not a folder id: '$id'" }
+        return id
+    }
+
+    private suspend fun deleteFolder(folder: String): Int {
+        val paths = filesUnder(folder)
         paths.chunked(deleteBatch).forEach { store.delete(it) }
-        val left = filesUnder(tripId)
-        check(left.isEmpty()) { "${left.size} photo(s) of trip $tripId are still in Storage" }
+        val left = filesUnder(folder)
+        check(left.isEmpty()) { "${left.size} photo(s) are still in Storage under $folder/" }
         return paths.size
     }
 

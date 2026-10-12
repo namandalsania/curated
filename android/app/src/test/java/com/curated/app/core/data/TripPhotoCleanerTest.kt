@@ -45,10 +45,9 @@ class TripPhotoCleanerTest {
     private fun deleteTrip(store: FakeStore, cleaner: TripPhotoCleaner = TripPhotoCleaner(store)): MutableList<String> {
         val events = mutableListOf<String>()
         runBlocking {
-            deleteTripPhotosThenRow(
-                tripId = trip,
-                deletePhotos = { cleaner.deleteTripFolder(it); events += "photos" },
-                deleteRow = { events += "row:$it" }
+            deletePhotosThenRow(
+                deletePhotos = { cleaner.deleteTripFolder(trip); events += "photos" },
+                deleteRow = { events += "row:$trip" }
             )
         }
         return events
@@ -73,7 +72,7 @@ class TripPhotoCleanerTest {
         val events = mutableListOf<String>()
         try {
             runBlocking {
-                deleteTripPhotosThenRow(trip, { TripPhotoCleaner(store).deleteTripFolder(it) }, { events += "row" })
+                deletePhotosThenRow({ TripPhotoCleaner(store).deleteTripFolder(trip) }, { events += "row" })
             }
             fail("expected the Storage failure to be thrown")
         } catch (e: IllegalStateException) {
@@ -89,7 +88,7 @@ class TripPhotoCleanerTest {
         val events = mutableListOf<String>()
         try {
             runBlocking {
-                deleteTripPhotosThenRow(trip, { TripPhotoCleaner(store).deleteTripFolder(it) }, { events += "row" })
+                deletePhotosThenRow({ TripPhotoCleaner(store).deleteTripFolder(trip) }, { events += "row" })
             }
             fail("expected the Storage failure to be thrown")
         } catch (e: IllegalStateException) {
@@ -105,11 +104,11 @@ class TripPhotoCleanerTest {
         val events = mutableListOf<String>()
         try {
             runBlocking {
-                deleteTripPhotosThenRow(trip, { TripPhotoCleaner(store).deleteTripFolder(it) }, { events += "row" })
+                deletePhotosThenRow({ TripPhotoCleaner(store).deleteTripFolder(trip) }, { events += "row" })
             }
             fail("expected the leftover photo to fail the delete")
         } catch (e: IllegalStateException) {
-            assertEquals("1 photo(s) of trip $trip are still in Storage", e.message)
+            assertEquals("1 photo(s) are still in Storage under $trip/", e.message)
         }
         assertTrue(events.isEmpty())
     }
@@ -153,5 +152,78 @@ class TripPhotoCleanerTest {
         }
         assertTrue(store.listCalls.isEmpty())
         assertTrue(store.deleteCalls.isEmpty())
+    }
+
+    // --- One stop: deleteStop uses the same order and the same cleaner. ---
+
+    /** Runs deleteStop's ordering for stop-a of [trip], recording into [events]. */
+    private fun deleteStop(store: FakeStore, events: MutableList<String> = mutableListOf()): MutableList<String> {
+        runBlocking {
+            deletePhotosThenRow(
+                deletePhotos = { TripPhotoCleaner(store).deleteStopFolder(trip, "stop-a"); events += "photos" },
+                deleteRow = { events += "row:stop-a" }
+            )
+        }
+        return events
+    }
+
+    @Test
+    fun `deleting a stop deletes only that stop's photos, then its row`() {
+        val store = FakeStore(
+            "$trip/stop-a/0.jpg", "$trip/stop-a/1.jpg",
+            "$trip/stop-ab/0.jpg", "$trip/stop-b/0.jpg", "trip-2/stop-a/0.jpg"
+        )
+        val events = deleteStop(store)
+        assertEquals(listOf("photos", "row:stop-a"), events)
+        // Its sibling stops, one whose id starts the same way, and another trip's stop-a stay.
+        assertEquals(sortedSetOf("$trip/stop-ab/0.jpg", "$trip/stop-b/0.jpg", "trip-2/stop-a/0.jpg"), store.files)
+        assertEquals(listOf(listOf("$trip/stop-a/0.jpg", "$trip/stop-a/1.jpg")), store.deleteCalls)
+    }
+
+    @Test
+    fun `a Storage failure deleting a stop's photos keeps the stop`() {
+        val store = FakeStore("$trip/stop-a/0.jpg", "$trip/stop-b/0.jpg").apply { failDelete = true }
+        val events = mutableListOf<String>()
+        try {
+            deleteStop(store, events)
+            fail("expected the Storage failure to be thrown")
+        } catch (e: IllegalStateException) {
+            assertEquals("delete failed", e.message)
+        }
+        assertTrue("the stop's row must not be deleted", events.isEmpty())
+        assertEquals(sortedSetOf("$trip/stop-a/0.jpg", "$trip/stop-b/0.jpg"), store.files)
+
+        // And a photo Storage keeps despite the delete stops it the same way.
+        val stubborn = FakeStore("$trip/stop-a/0.jpg").apply { undeletable = setOf("$trip/stop-a/0.jpg") }
+        val stubbornEvents = mutableListOf<String>()
+        try {
+            deleteStop(stubborn, stubbornEvents)
+            fail("expected the leftover photo to fail the delete")
+        } catch (e: IllegalStateException) {
+            assertEquals("1 photo(s) are still in Storage under $trip/stop-a/", e.message)
+        }
+        assertTrue("the stop's row must not be deleted", stubbornEvents.isEmpty())
+    }
+
+    @Test
+    fun `a stop with no photos deletes nothing in Storage and still deletes its row`() {
+        val store = FakeStore("$trip/stop-b/0.jpg")
+        assertEquals(listOf("photos", "row:stop-a"), deleteStop(store))
+        assertTrue(store.deleteCalls.isEmpty())
+        assertEquals(sortedSetOf("$trip/stop-b/0.jpg"), store.files)
+    }
+
+    @Test
+    fun `refuses a stop id that would list more than one stop folder`() {
+        val store = FakeStore("$trip/stop-a/0.jpg")
+        for ((tripId, stopId) in listOf(trip to "", trip to " ", trip to "stop-a/0.jpg", "" to "stop-a")) {
+            try {
+                runBlocking { TripPhotoCleaner(store).deleteStopFolder(tripId, stopId) }
+                fail("expected '$tripId' / '$stopId' to be refused")
+            } catch (_: IllegalArgumentException) {
+            }
+        }
+        assertTrue(store.listCalls.isEmpty())
+        assertEquals(sortedSetOf("$trip/stop-a/0.jpg"), store.files)
     }
 }

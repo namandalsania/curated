@@ -573,7 +573,13 @@ class CreateTripViewModel(
         tripRepository.updateStopDetails(stopId, name, category, caption, tips, arrivalTime)
     }
 
-    fun deleteStop(stopId: String) = write { tripRepository.deleteStop(stopId) }
+    /** Its photos, then the stop. If that fails the stop is still there after the reload, with the error. */
+    fun deleteStop(stopId: String) {
+        val tripId = _state.value.tripId ?: return
+        write(failure = "Couldn't delete that place. Check your connection and try again.") {
+            tripRepository.deleteStop(tripId, stopId, photoStorageRepository)
+        }
+    }
 
     fun addPhotosToStop(stopId: String, context: Context, uris: List<Uri>) {
         val tripId = _state.value.tripId ?: return
@@ -670,7 +676,7 @@ class CreateTripViewModel(
     fun clearImportSummary() = _state.update { it.copy(importSummary = null) }
 
     /** Runs a write in order, then reloads the draft so the screen matches the rows. */
-    private fun write(block: suspend () -> Unit) {
+    private fun write(failure: String = "Couldn't save that change. Try again.", block: suspend () -> Unit) {
         _state.update { it.copy(isSaving = true, error = null) }
         viewModelScope.launch {
             try {
@@ -678,7 +684,7 @@ class CreateTripViewModel(
                 _state.update { it.copy(isSaving = false) }
             } catch (e: Exception) {
                 Log.w(TAG, "Couldn't save a change to the draft", e)
-                _state.update { it.copy(isSaving = false, error = "Couldn't save that change. Try again.") }
+                _state.update { it.copy(isSaving = false, error = failure) }
             }
             reload()
         }

@@ -493,14 +493,13 @@ class TripRepository(private val client: SupabaseClient) {
 
     /**
      * Deletes the trip's photos from Storage, then the trip row; the database
-     * removes the rest (see [deleteTripPhotosThenRow]). Throws if either step
+     * removes the rest (see [deletePhotosThenRow]). Throws if either step
      * fails.
      */
     suspend fun deleteTrip(tripId: String, photoStorage: PhotoStorageRepository) =
-        deleteTripPhotosThenRow(
-            tripId = tripId,
-            deletePhotos = { photoStorage.deleteTripPhotos(it) },
-            deleteRow = { id -> postgrest.from("trips").delete { filter { eq("id", id) } } }
+        deletePhotosThenRow(
+            deletePhotos = { photoStorage.deleteTripPhotos(tripId) },
+            deleteRow = { postgrest.from("trips").delete { filter { eq("id", tripId) } } }
         )
 
     /** The day row for [dayIndex], created on demand. */
@@ -578,9 +577,16 @@ class TripRepository(private val client: SupabaseClient) {
             }
     }
 
-    suspend fun deleteStop(stopId: String) {
-        postgrest.from("stops").delete { filter { eq("id", stopId) } }
-    }
+    /**
+     * Deletes the stop's photos from Storage, then its row (its stop_photos
+     * rows and comments go with it). Same order and failure rule as
+     * [deleteTrip]: if the photos can't all be deleted, the stop stays.
+     */
+    suspend fun deleteStop(tripId: String, stopId: String, photoStorage: PhotoStorageRepository) =
+        deletePhotosThenRow(
+            deletePhotos = { photoStorage.deleteStopPhotos(tripId, stopId) },
+            deleteRow = { postgrest.from("stops").delete { filter { eq("id", stopId) } } }
+        )
 
     /** Uploads photos for a stop right away, so a draft keeps them. Returns how many landed. */
     suspend fun addStopPhotos(
@@ -911,22 +917,22 @@ internal data class DayStopPhotoRow(
 )
 
 /**
- * Photos first, then the row. If the photos can't all be deleted, the row stays
- * and the error goes to the caller, so the trip is still there to retry. The
- * other order would strand the photos: with the row gone the app has no way
- * back to them (that's how orphaned folders got into the bucket). If the row
- * delete fails after the photos are gone, a retry finds an empty folder and
- * goes straight to the row.
+ * Photos first, then the row - for a trip or a single stop. If the photos
+ * can't all be deleted, the row stays and the error goes to the caller, so it's
+ * still there to retry. The other order would strand the photos: with the row
+ * gone the app has no way back to them (that's how orphaned folders got into
+ * the bucket). If the row delete fails after the photos are gone, a retry finds
+ * an empty folder and goes straight to the row.
  *
- * The row's delete cascades to days, stops, stop_photos, likes, bookmarks,
- * comments, trip shares and notifications. Saved places and plan items keep
- * their copy of the place with the trip link set to null.
+ * A trip row's delete cascades to days, stops, stop_photos, likes, bookmarks,
+ * comments, trip shares and notifications; a stop's to its stop_photos,
+ * comments and notifications. Saved places and plan items keep their copy of
+ * the place with the link set to null.
  */
-internal suspend fun deleteTripPhotosThenRow(
-    tripId: String,
-    deletePhotos: suspend (String) -> Unit,
-    deleteRow: suspend (String) -> Unit
+internal suspend fun deletePhotosThenRow(
+    deletePhotos: suspend () -> Unit,
+    deleteRow: suspend () -> Unit
 ) {
-    deletePhotos(tripId)
-    deleteRow(tripId)
+    deletePhotos()
+    deleteRow()
 }
